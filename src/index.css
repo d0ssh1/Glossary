@@ -1,0 +1,117 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Lexicon Weaver Design Tokens */
+    --lw-bg-primary: #F6F5F2;
+    --lw-bg-panel: #FFFFFF;
+    --lw-bg-hover: #EFEEE9;
+    --lw-border-primary: #E0DFDA;
+    --lw-text-primary: #1A1A1A;
+    --lw-text-secondary: #6B6B66;
+    --lw-text-muted: #A3A39D;
+    --lw-accent-graphite: #2C2C2C;
+    --lw-accent-amber: #D4A056;
+    --lw-success: #7E9E7C;
+    --lw-warning: #D98C45;
+    --lw-error: #C0635F;
+
+    /* shadcn overrides */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 10%;
+    --primary: 0 0% 17%;
+    --primary-foreground: 40 14% 96%;
+    --secondary: 40 10% 93%;
+    --secondary-foreground: 0 0% 17%;
+    --muted: 40 10% 93%;
+    --muted-foreground: 50 3% 42%;
+    --accent: 40 10% 93%;
+    --accent-foreground: 0 0% 17%;
+    --destructive: 4 50% 56%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 40 6% 86%;
+    --input: 40 6% 86%;
+    --ring: 37 50% 59%;
+    --radius: 4px;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 0 0% 17%;
+    --sidebar-primary: 0 0% 17%;
+    --sidebar-primary-foreground: 40 14% 96%;
+    --sidebar-accent: 40 10% 93%;
+    --sidebar-accent-foreground: 0 0% 17%;
+    --sidebar-border: 40 6% 86%;
+    --sidebar-ring: 37 50% 59%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: var(--lw-bg-primary);
+    color: var(--lw-text-primary);
+    overflow: hidden;
+  }
+}
+
+@layer components {
+  /* Status dots */
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .status-dot--no-trait { background-color: var(--lw-error); }
+  .status-dot--in-progress { background-color: var(--lw-warning); }
+  .status-dot--ready { background-color: var(--lw-success); }
+
+  /* Graph node status */
+  .node-status--no-trait { stroke: var(--lw-error); fill: var(--lw-error); }
+  .node-status--in-progress { stroke: var(--lw-warning); fill: var(--lw-warning); }
+  .node-status--ready { stroke: var(--lw-success); fill: var(--lw-success); }
+
+  /* Modal backdrop */
+  .modal-backdrop {
+    background-color: rgba(26, 26, 26, 0.2);
+    backdrop-filter: blur(4px);
+  }
+
+  /* Scrollbar styling */
+  .lw-scrollbar::-webkit-scrollbar { width: 6px; }
+  .lw-scrollbar::-webkit-scrollbar-track { background: transparent; }
+  .lw-scrollbar::-webkit-scrollbar-thumb { background: var(--lw-border-primary); border-radius: 3px; }
+  .lw-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--lw-text-muted); }
+
+  /* Slide-up animation for floating bars */
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Generic fade-in (drawer backdrop, etc.) */
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  /* Graph background grid */
+  .graph-grid {
+    background-color: var(--lw-bg-primary);
+    background-image:
+      linear-gradient(to right, var(--lw-border-primary) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--lw-border-primary) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.3;
+  }
+}

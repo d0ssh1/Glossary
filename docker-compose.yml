@@ -1,0 +1,37 @@
+services:
+  api:
+    build: ./backend
+    container_name: lw-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - lw-data:/app/data
+    environment:
+      LW_DATABASE_URL: "sqlite:////app/data/lexicon_weaver.db"
+      LW_CORS_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173"
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: lw-web
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./src:/app/src
+      - ./index.html:/app/index.html
+      - ./vite.config.ts:/app/vite.config.ts
+      - ./tsconfig.json:/app/tsconfig.json
+      - ./tsconfig.app.json:/app/tsconfig.app.json
+      - ./tsconfig.node.json:/app/tsconfig.node.json
+      - ./tailwind.config.js:/app/tailwind.config.js
+      - ./postcss.config.js:/app/postcss.config.js
+    environment:
+      VITE_USE_API: "1"
+      VITE_API_URL: "http://localhost:8000"
+    depends_on:
+      - api
+
+volumes:
+  lw-data:
