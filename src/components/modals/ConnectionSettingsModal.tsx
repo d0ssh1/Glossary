@@ -83,8 +83,20 @@ export default function ConnectionSettingsModal() {
         dispatch({ type: 'OPEN_MODAL', modal: 'sync-report' });
       }, 400);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
       dispatch({ type: 'CLOSE_MODAL' });
+      dispatch({
+        type: 'SET_SYNC_REPORT',
+        report: {
+          courseName: course?.name || 'Курс',
+          modulesCount: 0,
+          lessonsCount: 0,
+          stepsCount: 0,
+          error: msg,
+        },
+      });
+      dispatch({ type: 'OPEN_MODAL', modal: 'sync-report' });
     } finally {
       setBusy(false);
     }

@@ -53,7 +53,19 @@ def import_course_from_dump(db: Session, course_id: int, path: Path) -> Course:
     course.title = payload.get("title", course.title)
     course.stepik_id = payload.get("stepik_id", course.stepik_id)
 
+    # Publish the total up-front so polling clients see a meaningful denominator
+    # even if the persistence loop finishes faster than the next poll tick.
+    steps_total = sum(
+        len(l.get("steps", []))
+        for s in payload.get("sections", [])
+        for l in s.get("lessons", [])
+    )
+    course.import_steps_total = steps_total
+    course.import_steps_done = 0
+    db.commit()
+
     sections_n = lessons_n = steps_n = 0
+    COMMIT_EVERY = 25
 
     for s_pos, s_data in enumerate(payload.get("sections", []), start=1):
         section = Section(
@@ -92,7 +104,11 @@ def import_course_from_dump(db: Session, course_id: int, path: Path) -> Course:
                 )
                 db.add(step)
                 steps_n += 1
+                if steps_n % COMMIT_EVERY == 0:
+                    course.import_steps_done = steps_n
+                    db.commit()
 
+    course.import_steps_done = steps_n
     course.is_parsed = True
     course.import_date = datetime.now(timezone.utc)
     db.flush()

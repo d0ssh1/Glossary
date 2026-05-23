@@ -8,12 +8,12 @@ import type {
 } from '@/types';
 import { mockCourses } from '@/data/mock';
 import {
-  apiBaseUrl, apiEnabled, listCourses, getCourse, listGlossaries, getGlossary,
+  apiEnabled, listCourses, getCourse, listGlossaries, getGlossary,
   createCourse as apiCreateCourseRaw, createGlossary as apiCreateGlossaryRaw,
   updateTerm as apiUpdateTermRaw, deleteTerm as apiDeleteTermRaw,
   bulkCreateTerms as apiBulkCreateTermsRaw,
   importCourse as apiImportCourseRaw, downloadScorm as apiDownloadScormRaw,
-  collectBindings as apiCollectBindingsRaw, getCourse as apiGetCourse,
+  collectBindings as apiCollectBindingsRaw, getImportStatus as apiGetImportStatus,
 } from '@/lib/api';
 import { mapCourseFull, stringIdToNumeric, numericToId } from '@/lib/apiAdapter';
 
@@ -455,7 +455,7 @@ export function useApi() {
     if (!apiEnabled()) return;
     try {
       const numId = stringIdToNumeric(courseId);
-      const full = await apiGetCourse(numId);
+      const full = await getCourse(numId);
       const glossariesRaw = await listGlossaries(numId);
       const glossaries = await Promise.all(
         glossariesRaw.map(g => getGlossary(g.id)),
@@ -477,16 +477,19 @@ export function useApi() {
     if (!apiEnabled()) throw new Error('API mode not enabled');
     const numId = stringIdToNumeric(courseId);
     await apiImportCourseRaw(numId, body);
-    // Poll until terminal status.
-    while (true) {
+    // Poll until terminal status. Bail out after ~10 minutes as a safety net
+    // so the modal can't hang forever if the backend disappears.
+    const deadline = Date.now() + 10 * 60 * 1000;
+    while (Date.now() < deadline) {
       await new Promise(r => setTimeout(r, 1500));
-      const st = await (await fetch(`${apiBaseUrl()}/courses/${numId}/import-status`)).json();
+      const st = await apiGetImportStatus(numId);
       onProgress?.(st);
       if (st.status === 'done' || st.status === 'error') {
         if (st.status === 'done') await apiRefetchCourse(courseId);
-        return st as import('@/lib/api').ImportStatus;
+        return st;
       }
     }
+    throw new Error('Import polling timed out after 10 minutes');
   }, [apiRefetchCourse]);
 
   const apiDownloadScorm = useCallback(async (

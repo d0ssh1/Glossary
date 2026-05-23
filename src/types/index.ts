@@ -133,4 +133,6 @@ export interface SyncReport {
   modulesCount: number;
   lessonsCount: number;
   stepsCount: number;
+  /** Populated when the import failed; surfaces the backend's error message. */
+  error?: string;
 }
