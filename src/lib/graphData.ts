@@ -34,7 +34,7 @@ export function buildGraphData(
 
   let result: { nodes: GraphNode[]; links: GraphLink[] };
   if (level === 'modules') result = buildModulesGraph(filtered, allTerms);
-  else if (level === 'lessons') result = buildLessonsGraph(filtered, drillModuleId);
+  else if (level === 'lessons') result = buildLessonsGraph(filtered, allTerms, drillModuleId);
   else result = buildTermsGraph(filtered, allTerms, drillModuleId, drillLessonId, filters.frequency);
 
   // Weight filter — drop edges outside [from, to], then drop orphaned non-center nodes.
@@ -120,33 +120,89 @@ function applyLogicFilter(
   return { nodes: keptNodes, links: keptLinks };
 }
 
+/** Normalize term names for cross-module/lesson sharing comparison. */
+function norm(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+/** Count shared terms (by normalized name) between two groups. */
+function sharedTermCount(a: Term[], b: Term[]): number {
+  if (a.length === 0 || b.length === 0) return 0;
+  const namesB = new Set(b.map(t => norm(t.name)));
+  let n = 0;
+  const seen = new Set<string>();
+  for (const t of a) {
+    const k = norm(t.name);
+    if (!seen.has(k) && namesB.has(k)) {
+      n += 1;
+      seen.add(k);
+    }
+  }
+  return n;
+}
+
+/**
+ * Build a global lesson ordering across the whole course (module.position →
+ * lesson.position via the modules[] / lessons[] array order). Used to decide
+ * whether a given lesson is the FIRST appearance of a term in the course.
+ */
+function buildLessonOrder(course: Course): Map<string, number> {
+  const out = new Map<string, number>();
+  let i = 0;
+  for (const m of course.modules) {
+    for (const l of m.lessons) {
+      out.set(l.id, i++);
+    }
+  }
+  return out;
+}
+
+/**
+ * Modules level: one node per module, edges weighted by the number of shared
+ * terms (by name) between each pair. Pairs with zero shared terms get no edge.
+ * Heavier edges → thicker line (rendered by D3Graph via `weight`); d3-force
+ * naturally pulls hubs (modules with many incident edges) toward the centre.
+ */
 function buildModulesGraph(course: Course, allTerms: Term[]) {
   const nodes: GraphNode[] = course.modules.map(m => ({
     id: m.id, name: m.name, type: 'module',
   }));
+
+  // Pre-bucket terms by module for O(M^2) pair scan instead of O(M^2 * T).
+  const termsByModule = new Map<string, Term[]>();
+  for (const t of allTerms) {
+    const arr = termsByModule.get(t.moduleId) || [];
+    arr.push(t);
+    termsByModule.set(t.moduleId, arr);
+  }
 
   const links: GraphLink[] = [];
   const mods = course.modules;
   for (let i = 0; i < mods.length; i++) {
     for (let j = i + 1; j < mods.length; j++) {
       const a = mods[i].id, b = mods[j].id;
-      const shared = allTerms
-        .filter(t => t.moduleId === a)
-        .filter(ta => allTerms.some(tb => tb.moduleId === b && tb.name === ta.name))
-        .length;
-      const weight = shared || (Math.abs(i - j) === 1 ? 2 : 1);
+      const shared = sharedTermCount(
+        termsByModule.get(a) || [],
+        termsByModule.get(b) || [],
+      );
+      if (shared === 0) continue;
       links.push({
         source: a,
         target: b,
-        type: (Math.abs(i - j) === 1 ? 'first-appearance' : 'mention') as LinkType,
-        weight: Math.max(1, weight),
+        type: 'first-appearance',
+        weight: shared,
       });
     }
   }
   return { nodes, links };
 }
 
-function buildLessonsGraph(course: Course, drillModuleId: string | undefined) {
+/**
+ * Lessons level (drilled into one module): one node per lesson, edges weighted
+ * by shared terms between each pair of lessons in that module. Same colour
+ * convention as modules level — thickness/intensity scales with the weight.
+ */
+function buildLessonsGraph(course: Course, allTerms: Term[], drillModuleId: string | undefined) {
   const mod = course.modules.find(m => m.id === drillModuleId) || course.modules[0];
   if (!mod) return { nodes: [], links: [] };
 
@@ -154,21 +210,43 @@ function buildLessonsGraph(course: Course, drillModuleId: string | undefined) {
     id: l.id, name: l.name, type: 'lesson', parentId: mod.id,
   }));
 
-  const links: GraphLink[] = [];
-  for (let i = 0; i < mod.lessons.length - 1; i++) {
-    links.push({
-      source: mod.lessons[i].id,
-      target: mod.lessons[i + 1].id,
-      type: 'first-appearance',
-      weight: 3,
-    });
+  const termsByLesson = new Map<string, Term[]>();
+  for (const t of allTerms) {
+    if (t.moduleId !== mod.id) continue;
+    const arr = termsByLesson.get(t.lessonId) || [];
+    arr.push(t);
+    termsByLesson.set(t.lessonId, arr);
   }
-  if (mod.lessons.length >= 4) {
-    links.push({ source: mod.lessons[0].id, target: mod.lessons[3].id, type: 'mention', weight: 2 });
+
+  const links: GraphLink[] = [];
+  const lessons = mod.lessons;
+  for (let i = 0; i < lessons.length; i++) {
+    for (let j = i + 1; j < lessons.length; j++) {
+      const a = lessons[i].id, b = lessons[j].id;
+      const shared = sharedTermCount(
+        termsByLesson.get(a) || [],
+        termsByLesson.get(b) || [],
+      );
+      if (shared === 0) continue;
+      links.push({
+        source: a,
+        target: b,
+        type: 'first-appearance',
+        weight: shared,
+      });
+    }
   }
   return { nodes, links };
 }
 
+/**
+ * Terms level (drilled into one lesson): central lesson hub + a node per term
+ * belonging to the lesson. Link colour distinguishes first-appearance (black)
+ * vs later mention (grey) — derived from the term's `occurrences[]`. If the
+ * current lesson is the earliest lesson in the course where the term shows up,
+ * the link is 'first-appearance'; otherwise 'mention'. Terms with no
+ * occurrences fall back to first-appearance (they're declared right here).
+ */
 function buildTermsGraph(
   course: Course,
   allTerms: Term[],
@@ -180,16 +258,39 @@ function buildTermsGraph(
   const lesson = mod?.lessons.find(l => l.id === drillLessonId) || mod?.lessons[0];
   if (!lesson) return { nodes: [], links: [] };
 
+  const lessonOrder = buildLessonOrder(course);
+  const currentPos = lessonOrder.get(lesson.id) ?? Number.MAX_SAFE_INTEGER;
   const lessonTerms = allTerms.filter(t => t.lessonId === lesson.id);
   const centerId = `center-${lesson.id}`;
 
-  // Synthesize link type from index parity (mirrors previous behaviour),
-  // then apply the frequency filter to drop terms whose link doesn't match.
-  const enriched = lessonTerms.map((t, i) => ({
-    term: t,
-    linkType: (i % 2 === 0 ? 'first-appearance' : 'mention') as LinkType,
-    weight: 1 + (i % 3),
-  }));
+  // Earliest course position where any term with the same (normalized) name
+  // first appears — accounting for cross-lesson declarations and occurrences.
+  // Two terms with the same display name in different lessons are treated as
+  // the same concept for "first appearance" purposes.
+  const earliestByName = new Map<string, number>();
+  for (const t of allTerms) {
+    const key = norm(t.name);
+    const positions: number[] = [];
+    const homePos = lessonOrder.get(t.lessonId);
+    if (homePos !== undefined) positions.push(homePos);
+    for (const occ of t.occurrences || []) {
+      const p = lessonOrder.get(occ.lessonId);
+      if (p !== undefined) positions.push(p);
+    }
+    if (positions.length === 0) continue;
+    const minPos = Math.min(...positions);
+    const prev = earliestByName.get(key);
+    earliestByName.set(key, prev === undefined ? minPos : Math.min(prev, minPos));
+  }
+
+  const enriched = lessonTerms.map(t => {
+    const earliest = earliestByName.get(norm(t.name)) ?? currentPos;
+    const linkType: LinkType = earliest >= currentPos ? 'first-appearance' : 'mention';
+    // Weight = occurrences in THIS lesson (visual frequency cue), min 1.
+    const localOccs = (t.occurrences || []).filter(o => o.lessonId === lesson.id).length;
+    return { term: t, linkType, weight: Math.max(1, localOccs) };
+  });
+
   const visible = frequency === 'all'
     ? enriched
     : enriched.filter(e => e.linkType === frequency);

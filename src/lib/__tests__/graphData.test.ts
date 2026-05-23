@@ -22,10 +22,19 @@ function mkCourse(): Course {
   };
 }
 
+// Term fixture:
+// - 'Алгоритм' lives in m1/l1 AND m2/l3 (same name) → creates a shared edge
+//   between m1↔m2 (modules level) and gives the m2/l3 instance a 'mention' link
+//   (l1 comes earlier than l3 in DFS order).
+// - 'База' lives in m1/l1 AND m1/l2 → creates a shared edge between l1↔l2
+//   inside m1 at the lessons level.
+// - 'Граф' is unique to m2/l3.
 const terms: Term[] = [
   { id: 't1', name: 'Алгоритм', status: 'ready', definition: 'd', moduleId: 'm1', lessonId: 'l1', occurrences: [], connections: [] },
   { id: 't2', name: 'База', status: 'no-trait', definition: '', moduleId: 'm1', lessonId: 'l1', occurrences: [], connections: [] },
   { id: 't3', name: 'Граф', status: 'in-progress', definition: '', moduleId: 'm2', lessonId: 'l3', occurrences: [], connections: [] },
+  { id: 't4', name: 'Алгоритм', status: 'ready', definition: '', moduleId: 'm2', lessonId: 'l3', occurrences: [], connections: [] },
+  { id: 't5', name: 'База', status: 'no-trait', definition: '', moduleId: 'm1', lessonId: 'l2', occurrences: [], connections: [] },
 ];
 
 function baseOpts(overrides: Partial<Parameters<typeof buildGraphData>[1]> = {}) {
@@ -42,28 +51,44 @@ function baseOpts(overrides: Partial<Parameters<typeof buildGraphData>[1]> = {})
 }
 
 describe('buildGraphData', () => {
-  it('modules level produces one node per module + pairwise links', () => {
+  it('modules level connects only pairs that share a term', () => {
     const { nodes, links } = buildGraphData('modules', baseOpts());
-    expect(nodes).toHaveLength(2);
     expect(nodes.map(n => n.id).sort()).toEqual(['m1', 'm2']);
     expect(links).toHaveLength(1);
     expect(links[0].source).toBe('m1');
     expect(links[0].target).toBe('m2');
+    expect(links[0].weight).toBe(1); // exactly one shared term: 'Алгоритм'
   });
 
-  it('lessons level shows lessons of drill module', () => {
+  it('modules level: no edge when modules share zero terms', () => {
+    const { links } = buildGraphData('modules', baseOpts({
+      // Drop the bridge term so m1 and m2 have nothing in common.
+      allTerms: terms.filter(t => t.id !== 't4'),
+    }));
+    expect(links).toHaveLength(0);
+  });
+
+  it('lessons level connects only lesson pairs that share a term', () => {
     const { nodes, links } = buildGraphData('lessons', baseOpts({ drillModuleId: 'm1' }));
-    expect(nodes).toHaveLength(2);
     expect(nodes.map(n => n.id)).toEqual(['l1', 'l2']);
     expect(links).toHaveLength(1);
+    expect(links[0].weight).toBe(1); // exactly one shared term: 'База'
   });
 
-  it('terms level produces center + per-term nodes', () => {
-    const { nodes, links } = buildGraphData('terms', baseOpts({ drillModuleId: 'm1', drillLessonId: 'l1' }));
-    expect(nodes.find(n => n.type === 'lesson')).toBeDefined();
-    const termNodes = nodes.filter(n => n.type === 'term');
-    expect(termNodes).toHaveLength(2);
-    expect(links).toHaveLength(2);
+  it('terms level: link is mention when the term first appeared earlier in the course', () => {
+    // l3 is in m2, AFTER m1.l1 (which also has 'Алгоритм'/t1). So at l3 the
+    // 'Алгоритм' instance (t4) must be drawn as a mention.
+    const { links } = buildGraphData('terms', baseOpts({ drillModuleId: 'm2', drillLessonId: 'l3' }));
+    const alg = links.find(l => l.target === 't4');
+    const graf = links.find(l => l.target === 't3');
+    expect(alg?.type).toBe('mention');
+    expect(graf?.type).toBe('first-appearance'); // unique to this lesson
+  });
+
+  it('terms level: first lesson with a term gets first-appearance link', () => {
+    const { links } = buildGraphData('terms', baseOpts({ drillModuleId: 'm1', drillLessonId: 'l1' }));
+    // l1 is the earliest lesson — both 'Алгоритм' (t1) and 'База' (t2) declared here.
+    expect(links.every(l => l.type === 'first-appearance')).toBe(true);
   });
 
   it('returns empty for missing course', () => {
@@ -79,15 +104,14 @@ describe('buildGraphData', () => {
     expect(links).toHaveLength(0);
   });
 
-  it('frequency filter "first-appearance" drops mention-type term nodes', () => {
-    const all = buildGraphData('terms', baseOpts({ drillModuleId: 'm1', drillLessonId: 'l1' }));
-    const first = buildGraphData('terms', baseOpts({
-      drillModuleId: 'm1',
-      drillLessonId: 'l1',
-      filters: { ...defaultGraphFilters, frequency: 'first-appearance' },
+  it('frequency filter "mention" keeps only mention-type terms', () => {
+    const out = buildGraphData('terms', baseOpts({
+      drillModuleId: 'm2',
+      drillLessonId: 'l3',
+      filters: { ...defaultGraphFilters, frequency: 'mention' },
     }));
-    expect(first.links.length).toBeLessThan(all.links.length);
-    expect(first.links.every(l => l.type === 'first-appearance')).toBe(true);
+    expect(out.links.every(l => l.type === 'mention')).toBe(true);
+    expect(out.links.length).toBeGreaterThan(0);
   });
 
   it('logic NOT excludes modules containing selected terms', () => {
@@ -95,7 +119,7 @@ describe('buildGraphData', () => {
       filters: { ...defaultGraphFilters, logic: 'not' },
       selectedTermIds: ['t1'],
     }));
-    // t1 is in m1 → m1 must be excluded, only m2 remains
+    // t1 lives in m1 → only m2 should remain.
     expect(out.nodes.map(n => n.id)).toEqual(['m2']);
   });
 
@@ -104,7 +128,7 @@ describe('buildGraphData', () => {
       filters: { ...defaultGraphFilters, logic: 'and' },
       selectedTermIds: ['t1', 't3'],
     }));
-    // No module has both — result must be empty
+    // No single module hosts both t1 (m1) and t3 (m2).
     expect(out.nodes).toHaveLength(0);
   });
 
@@ -113,7 +137,7 @@ describe('buildGraphData', () => {
       filters: { ...defaultGraphFilters, logic: 'xor' },
       selectedTermIds: ['t1', 't3'],
     }));
-    // m1 has t1 (count=1), m2 has t3 (count=1) — both kept
+    // m1 hosts t1 (count=1), m2 hosts t3 (count=1) — both kept.
     expect(out.nodes.map(n => n.id).sort()).toEqual(['m1', 'm2']);
   });
 });
