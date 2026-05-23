@@ -72,6 +72,8 @@ def init_db() -> None:
             migrations = [
                 ("import_status", "ALTER TABLE course ADD COLUMN import_status VARCHAR(20) DEFAULT 'idle'"),
                 ("import_error", "ALTER TABLE course ADD COLUMN import_error TEXT"),
+                ("import_steps_total", "ALTER TABLE course ADD COLUMN import_steps_total INTEGER DEFAULT 0"),
+                ("import_steps_done", "ALTER TABLE course ADD COLUMN import_steps_done INTEGER DEFAULT 0"),
             ]
             for col, ddl in migrations:
                 if col in existing:

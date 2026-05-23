@@ -3,7 +3,7 @@
 // ============================================================
 import type {
   ApiCourse, ApiCourseFull, ApiGlossary, ApiGlossaryFull, ApiTerm,
-  ApiBinding, ApiOccurrence, ImportReport, CollectReport,
+  ApiBinding, ApiOccurrence, CollectReport,
 } from './apiTypes';
 
 export class ApiError extends Error {
@@ -57,8 +57,26 @@ export const createCourse = (body: { title: string; url: string }) =>
   request<ApiCourse>('/courses/', { method: 'POST', body: JSON.stringify(body) });
 export const deleteCourse = (id: number) =>
   request<void>(`/courses/${id}`, { method: 'DELETE' });
-export const importCourse = (id: number, body: { source: 'mock' | 'json'; filename?: string }) =>
-  request<ImportReport>(`/courses/${id}/import`, { method: 'POST', body: JSON.stringify(body) });
+export type ImportBody =
+  | { source: 'mock'; filename?: string }
+  | { source: 'json'; filename: string }
+  | { source: 'stepik'; stepik_course_id: number };
+export const importCourse = (id: number, body: ImportBody) =>
+  request<{ course_id: number; status: string; message: string }>(
+    `/courses/${id}/import`,
+    { method: 'POST', body: JSON.stringify(body) },
+  );
+export interface ImportStatus {
+  status: 'idle' | 'running' | 'done' | 'error';
+  error: string | null;
+  sections_count: number;
+  lessons_count: number;
+  steps_count: number;
+  steps_total?: number;
+  steps_done?: number;
+}
+export const getImportStatus = (id: number) =>
+  request<ImportStatus>(`/courses/${id}/import-status`);
 export const patchSection = (cid: number, sid: number, body: { is_indexed: boolean }) =>
   request(`/courses/${cid}/sections/${sid}`, { method: 'PATCH', body: JSON.stringify(body) });
 export const patchLesson = (cid: number, lid: number, body: { is_indexed: boolean }) =>

@@ -13,7 +13,7 @@ export default function D3Graph() {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { state, dispatch } = useApp();
-  const { graphLevel, activeNodeId, activeGlossaryId, activeCourseId, breadcrumbs, courses, hierFilterIds } = state;
+  const { graphLevel, activeNodeId, activeGlossaryId, activeCourseId, breadcrumbs, courses, hierFilterIds, graphFilters, selectedTermIds } = state;
 
   // Active course + glossary
   const activeCourse = courses.find(c => c.id === activeCourseId);
@@ -74,7 +74,15 @@ export default function D3Graph() {
       });
     svg.call(zoom);
 
-    const { nodes, links } = buildGraphData(graphLevel, activeCourse, allTerms, drillModuleId, drillLessonId, hierFilterIds);
+    const { nodes, links } = buildGraphData(graphLevel, {
+      course: activeCourse,
+      allTerms,
+      drillModuleId,
+      drillLessonId,
+      hierFilterIds,
+      filters: graphFilters,
+      selectedTermIds,
+    });
 
     // Restore saved positions for this drill-down context.
     const positionsKey = contextKey(graphLevel, drillModuleId, drillLessonId);
@@ -320,7 +328,7 @@ export default function D3Graph() {
     return () => {
       simulation.stop();
     };
-  }, [graphLevel, activeNodeId, activeCourse, activeGlossary, allTerms, drillModuleId, drillLessonId, hierFilterIds, dispatch]);
+  }, [graphLevel, activeNodeId, activeCourse, activeGlossary, allTerms, drillModuleId, drillLessonId, hierFilterIds, graphFilters, selectedTermIds, dispatch]);
 
   return (
     <div ref={containerRef} className="relative h-full w-full">

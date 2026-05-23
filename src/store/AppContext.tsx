@@ -8,12 +8,33 @@ import type {
 } from '@/types';
 import { mockCourses } from '@/data/mock';
 import {
-  apiEnabled, listCourses, getCourse, listGlossaries, getGlossary,
+  apiBaseUrl, apiEnabled, listCourses, getCourse, listGlossaries, getGlossary,
   createCourse as apiCreateCourseRaw, createGlossary as apiCreateGlossaryRaw,
   updateTerm as apiUpdateTermRaw, deleteTerm as apiDeleteTermRaw,
   bulkCreateTerms as apiBulkCreateTermsRaw,
+  importCourse as apiImportCourseRaw, downloadScorm as apiDownloadScormRaw,
+  collectBindings as apiCollectBindingsRaw, getCourse as apiGetCourse,
 } from '@/lib/api';
 import { mapCourseFull, stringIdToNumeric, numericToId } from '@/lib/apiAdapter';
+
+/** Filter set lifted out of FiltersTab so the graph renderer can react to it. */
+export type FrequencyMode = 'all' | 'first-appearance' | 'mention';
+export type LogicMode = 'and' | 'or' | 'not' | 'xor';
+export interface GraphFilters {
+  weightEnabled: boolean;
+  weightFrom: number;
+  weightTo: number;
+  frequency: FrequencyMode;
+  logic: LogicMode;
+}
+
+export const defaultGraphFilters: GraphFilters = {
+  weightEnabled: false,
+  weightFrom: 0,
+  weightTo: 100,
+  frequency: 'all',
+  logic: 'or',
+};
 
 // --- State ---
 interface AppState {
@@ -36,6 +57,7 @@ interface AppState {
   selectedTermIds: string[];
   /** Module/lesson IDs included by the hierarchical filter. `null` = "everything". */
   hierFilterIds: string[] | null;
+  graphFilters: GraphFilters;
   hasUnsavedChanges: boolean;
   pendingNavigation: (() => void) | null;
   syncProgress: number;
@@ -62,6 +84,7 @@ const initialState: AppState = {
   searchTerm: '',
   selectedTermIds: [],
   hierFilterIds: null,
+  graphFilters: defaultGraphFilters,
   hasUnsavedChanges: false,
   pendingNavigation: null,
   syncProgress: 0,
@@ -91,12 +114,14 @@ type Action =
   | { type: 'SELECT_ALL_TERMS'; termIds: string[] }
   | { type: 'DESELECT_ALL_TERMS' }
   | { type: 'SET_HIER_FILTER'; ids: string[] | null }
+  | { type: 'SET_GRAPH_FILTERS'; filters: Partial<GraphFilters> }
   | { type: 'SET_UNSAVED_CHANGES'; value: boolean }
   | { type: 'SET_PENDING_NAVIGATION'; fn: (() => void) | null }
   | { type: 'SET_SYNC_PROGRESS'; progress: number; status: string }
   | { type: 'SET_SYNC_REPORT'; report: SyncReport | null }
   | { type: 'SET_COURSES'; courses: Course[] }
   | { type: 'ADD_COURSE'; course: Course }
+  | { type: 'REPLACE_COURSE'; course: Course }
   | { type: 'ADD_GLOSSARY'; courseId: string; glossary: Glossary }
   | { type: 'UPDATE_TERM'; termId: string; updates: Partial<Term> }
   | { type: 'DELETE_TERM'; termId: string }
@@ -175,6 +200,8 @@ export function appReducer(state: AppState, action: Action): AppState {
       return { ...state, selectedTermIds: [] };
     case 'SET_HIER_FILTER':
       return { ...state, hierFilterIds: action.ids };
+    case 'SET_GRAPH_FILTERS':
+      return { ...state, graphFilters: { ...state.graphFilters, ...action.filters } };
     case 'SET_UNSAVED_CHANGES':
       return { ...state, hasUnsavedChanges: action.value };
     case 'SET_PENDING_NAVIGATION':
@@ -187,6 +214,11 @@ export function appReducer(state: AppState, action: Action): AppState {
       return { ...state, courses: action.courses };
     case 'ADD_COURSE':
       return { ...state, courses: [...state.courses, action.course] };
+    case 'REPLACE_COURSE':
+      return {
+        ...state,
+        courses: state.courses.map(c => (c.id === action.course.id ? action.course : c)),
+      };
     case 'ADD_GLOSSARY': {
       const updated = state.courses.map(c =>
         c.id === action.courseId
@@ -418,5 +450,69 @@ export function useApi() {
     return terms;
   }, [dispatch]);
 
-  return { apiCreateCourse, apiCreateGlossary, apiUpdateTerm, apiDeleteTerm, apiBulkAddTerms };
+  /** Pull a fresh course tree + glossaries from the backend and reseat it in state. */
+  const apiRefetchCourse = useCallback(async (courseId: string) => {
+    if (!apiEnabled()) return;
+    try {
+      const numId = stringIdToNumeric(courseId);
+      const full = await apiGetCourse(numId);
+      const glossariesRaw = await listGlossaries(numId);
+      const glossaries = await Promise.all(
+        glossariesRaw.map(g => getGlossary(g.id)),
+      );
+      const mapped = mapCourseFull(full, glossaries);
+      dispatch({ type: 'REPLACE_COURSE', course: mapped });
+    } catch (err) {
+      console.error('[useApi] refetchCourse failed', err);
+    }
+  }, [dispatch]);
+
+  /** Trigger a course import; returns a promise that resolves when the backend
+   *  reports `done` / `error`. Polls `/import-status` every 1.5 s. */
+  const apiImportCourse = useCallback(async (
+    courseId: string,
+    body: import('@/lib/api').ImportBody,
+    onProgress?: (status: import('@/lib/api').ImportStatus) => void,
+  ) => {
+    if (!apiEnabled()) throw new Error('API mode not enabled');
+    const numId = stringIdToNumeric(courseId);
+    await apiImportCourseRaw(numId, body);
+    // Poll until terminal status.
+    while (true) {
+      await new Promise(r => setTimeout(r, 1500));
+      const st = await (await fetch(`${apiBaseUrl()}/courses/${numId}/import-status`)).json();
+      onProgress?.(st);
+      if (st.status === 'done' || st.status === 'error') {
+        if (st.status === 'done') await apiRefetchCourse(courseId);
+        return st as import('@/lib/api').ImportStatus;
+      }
+    }
+  }, [apiRefetchCourse]);
+
+  const apiDownloadScorm = useCallback(async (
+    glossaryId: string, scormId: string, version: '1.2' | '2004',
+  ) => {
+    if (!apiEnabled()) return null;
+    const numId = stringIdToNumeric(glossaryId);
+    return apiDownloadScormRaw(numId, scormId, version);
+  }, []);
+
+  const apiCollectBindings = useCallback(async (
+    glossaryId: string, termIds: string[],
+  ) => {
+    if (!apiEnabled()) return { terms_processed: 0, bindings_created: 0 };
+    const gNumId = stringIdToNumeric(glossaryId);
+    const tNumIds = termIds.map(stringIdToNumeric);
+    const report = await apiCollectBindingsRaw(gNumId, tNumIds);
+    // Refresh the parent course so the new bindings show up in the graph.
+    const course = state.courses.find(c => c.glossaries.some(g => g.id === glossaryId));
+    if (course) await apiRefetchCourse(course.id);
+    return report;
+  }, [state.courses, apiRefetchCourse]);
+
+  return {
+    apiCreateCourse, apiCreateGlossary,
+    apiUpdateTerm, apiDeleteTerm, apiBulkAddTerms,
+    apiImportCourse, apiDownloadScorm, apiCollectBindings, apiRefetchCourse,
+  };
 }

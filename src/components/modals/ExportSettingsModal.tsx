@@ -1,25 +1,44 @@
 import { useState } from 'react';
-import { useApp } from '@/store/AppContext';
+import { useApp, useApi } from '@/store/AppContext';
+import { apiEnabled } from '@/lib/api';
 import { ModalClose } from './ModalShell';
 import type { ScormVersion } from '@/types';
 
 export default function ExportSettingsModal() {
-  const { dispatch } = useApp();
+  const { state, dispatch } = useApp();
+  const { apiDownloadScorm } = useApi();
   const [version, setVersion] = useState<ScormVersion>('1.2');
-  const [courseId, setCourseId] = useState('course_sql_01');
+  const [scormId, setScormId] = useState('course_sql_01');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleExport = () => {
-    dispatch({ type: 'CLOSE_MODAL' });
-    const blob = new Blob(
-      [`<?xml version="1.0" encoding="UTF-8"?><scorm version="${version}"><course id="${courseId}"/></scorm>`],
-      { type: 'application/xml' },
-    );
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${courseId}_scorm_${version}.xml`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const handleExport = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      let blob: Blob | null = null;
+      if (apiEnabled() && state.activeGlossaryId) {
+        blob = await apiDownloadScorm(state.activeGlossaryId, scormId, version);
+      }
+      if (!blob) {
+        // Mock-mode fallback: synthesize a trivial XML so the download flow still works.
+        blob = new Blob(
+          [`<?xml version="1.0" encoding="UTF-8"?><scorm version="${version}"><course id="${scormId}"/></scorm>`],
+          { type: 'application/xml' },
+        );
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${scormId}_scorm_${version}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      dispatch({ type: 'CLOSE_MODAL' });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось собрать SCORM-пакет');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -47,18 +66,22 @@ export default function ExportSettingsModal() {
         <div>
           <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--lw-text-secondary)' }}>Идентификатор курса</label>
           <input
-            value={courseId}
-            onChange={e => setCourseId(e.target.value)}
+            value={scormId}
+            onChange={e => setScormId(e.target.value)}
             className="w-full rounded border px-3 py-2 text-sm outline-none"
             style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-panel)', color: 'var(--lw-text-primary)' }}
           />
         </div>
+        {error && (
+          <p className="text-xs" style={{ color: 'var(--lw-error)' }}>{error}</p>
+        )}
         <button
           onClick={handleExport}
-          className="mt-2 w-full rounded py-2 text-sm font-medium transition-all duration-200"
+          disabled={busy}
+          className="mt-2 w-full rounded py-2 text-sm font-medium transition-all duration-200 disabled:opacity-50"
           style={{ backgroundColor: 'var(--lw-accent-graphite)', color: 'var(--lw-bg-primary)' }}
         >
-          Скомпилировать и скачать
+          {busy ? 'Сборка...' : 'Скомпилировать и скачать'}
         </button>
       </div>
     </div>

@@ -1,6 +1,14 @@
 import { useState } from 'react';
-import { useApp } from '@/store/AppContext';
+import { useApp, useApi } from '@/store/AppContext';
+import { apiEnabled, type ImportStatus } from '@/lib/api';
 import { ModalClose } from './ModalShell';
+
+/** Extract the numeric Stepik course id from a URL like
+ *  ``https://stepik.org/course/63054/promo`` or ``stepik.org/course/63054``. */
+function parseStepikCourseId(url: string): number | null {
+  const m = /\/course\/(\d+)/.exec(url);
+  return m ? Number(m[1]) : null;
+}
 
 function runSyncSimulation(
   dispatch: ReturnType<typeof useApp>['dispatch'],
@@ -29,11 +37,69 @@ function runSyncSimulation(
 }
 
 export default function ConnectionSettingsModal() {
-  const { dispatch } = useApp();
-  const [clientId, setClientId] = useState('');
-  const [clientServer, setClientServer] = useState('');
+  const { state, dispatch } = useApp();
+  const { apiImportCourse } = useApi();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const course = state.courses.find(c => c.id === state.activeCourseId);
+  const stepikId = course ? parseStepikCourseId(course.url) : null;
+  const live = apiEnabled() && !!state.activeCourseId;
+
+  const runLiveImport = async (body: Parameters<typeof apiImportCourse>[1]) => {
+    if (!state.activeCourseId) return;
+    setError(null);
+    setBusy(true);
+    dispatch({ type: 'CLOSE_MODAL' });
+    dispatch({ type: 'OPEN_MODAL', modal: 'sync-process' });
+    dispatch({ type: 'SET_SYNC_PROGRESS', progress: 1, status: 'Запуск импорта...' });
+    try {
+      const finalStatus = await apiImportCourse(state.activeCourseId, body, (s: ImportStatus) => {
+        const done = s.steps_done ?? s.steps_count ?? 0;
+        const total = s.steps_total ?? 0;
+        const pct = total > 0
+          ? Math.min(99, Math.round((done / total) * 100))
+          : Math.min(95, 5 + s.sections_count * 5 + s.lessons_count);
+        const label = total > 0
+          ? `Шаги: ${done} / ${total}`
+          : `Структура: ${s.sections_count} секций, ${s.lessons_count} уроков...`;
+        dispatch({ type: 'SET_SYNC_PROGRESS', progress: pct, status: label });
+      });
+      if (finalStatus.status === 'error') {
+        throw new Error(finalStatus.error || 'Импорт завершился ошибкой');
+      }
+      dispatch({ type: 'SET_SYNC_PROGRESS', progress: 100, status: 'Завершено!' });
+      setTimeout(() => {
+        dispatch({ type: 'CLOSE_MODAL' });
+        dispatch({
+          type: 'SET_SYNC_REPORT',
+          report: {
+            courseName: course?.name || 'Курс',
+            modulesCount: finalStatus.sections_count,
+            lessonsCount: finalStatus.lessons_count,
+            stepsCount: finalStatus.steps_count,
+          },
+        });
+        dispatch({ type: 'OPEN_MODAL', modal: 'sync-report' });
+      }, 400);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      dispatch({ type: 'CLOSE_MODAL' });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const startApiSync = () => {
+    if (live) {
+      if (!stepikId) {
+        setError('В URL курса не найден Stepik ID (ожидается ".../course/<id>/...")');
+        return;
+      }
+      void runLiveImport({ source: 'stepik', stepik_course_id: stepikId });
+      return;
+    }
+    // Mock fallback
     dispatch({ type: 'CLOSE_MODAL' });
     dispatch({ type: 'OPEN_MODAL', modal: 'sync-process' });
     runSyncSimulation(
@@ -45,6 +111,10 @@ export default function ConnectionSettingsModal() {
   };
 
   const startJsonSync = () => {
+    if (live) {
+      void runLiveImport({ source: 'mock' });
+      return;
+    }
     dispatch({ type: 'CLOSE_MODAL' });
     dispatch({ type: 'OPEN_MODAL', modal: 'sync-process' });
     runSyncSimulation(
@@ -60,41 +130,40 @@ export default function ConnectionSettingsModal() {
       <ModalClose />
       <h3 className="mb-5 text-lg font-semibold" style={{ color: 'var(--lw-text-primary)' }}>Настройка подключения</h3>
       <div className="space-y-4">
-        <div>
-          <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--lw-text-secondary)' }}>Client ID</label>
-          <input
-            value={clientId}
-            onChange={e => setClientId(e.target.value)}
-            placeholder="your-client-id"
-            className="w-full rounded border px-3 py-2 text-sm outline-none"
-            style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-panel)', color: 'var(--lw-text-primary)' }}
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--lw-text-secondary)' }}>Client Server</label>
-          <input
-            value={clientServer}
-            onChange={e => setClientServer(e.target.value)}
-            placeholder="https://api.stepik.org"
-            className="w-full rounded border px-3 py-2 text-sm outline-none"
-            style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-panel)', color: 'var(--lw-text-primary)' }}
-          />
-        </div>
+        {live ? (
+          <div className="rounded border p-3 text-xs leading-relaxed"
+            style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)', color: 'var(--lw-text-secondary)' }}>
+            <p>API-режим включён. Ключи Stepik берутся из <code>backend/.env</code>.</p>
+            {stepikId
+              ? <p className="mt-1">Будет импортирован курс Stepik <strong>#{stepikId}</strong>.</p>
+              : <p className="mt-1" style={{ color: 'var(--lw-warning)' }}>В URL курса нет Stepik ID — доступен только JSON-импорт.</p>}
+          </div>
+        ) : (
+          <p className="text-xs italic" style={{ color: 'var(--lw-text-muted)' }}>
+            Демо-режим: используются моковые данные. Чтобы импортировать реальный курс, поднимите бэкенд
+            и поставьте <code>VITE_USE_API=1</code>.
+          </p>
+        )}
+
+        {error && <p className="text-xs" style={{ color: 'var(--lw-error)' }}>{error}</p>}
+
         <button
           onClick={startApiSync}
-          className="mt-2 w-full rounded py-2 text-sm font-medium transition-all duration-200"
+          disabled={busy || (live && !stepikId)}
+          className="mt-2 w-full rounded py-2 text-sm font-medium transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40"
           style={{ backgroundColor: 'var(--lw-accent-graphite)', color: 'var(--lw-bg-primary)' }}
         >
-          Начать загрузку
+          {live ? 'Импорт с Stepik' : 'Начать загрузку (демо)'}
         </button>
         <button
           onClick={startJsonSync}
-          className="w-full rounded border py-2 text-sm font-medium transition-all duration-200"
+          disabled={busy}
+          className="w-full rounded border py-2 text-sm font-medium transition-all duration-200 disabled:opacity-40"
           style={{ borderColor: 'var(--lw-border-primary)', color: 'var(--lw-text-secondary)' }}
           onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--lw-bg-hover)'; }}
           onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
         >
-          Загрузить JSON-структуру курса (оффлайн)
+          {live ? 'Импорт из локального JSON' : 'Загрузить JSON-структуру курса (оффлайн)'}
         </button>
       </div>
     </div>

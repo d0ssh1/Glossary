@@ -29,6 +29,8 @@ class Course(Base):
     import_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     import_status: Mapped[str] = mapped_column(String(20), default="idle")
     import_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    import_steps_total: Mapped[int] = mapped_column(Integer, default=0)
+    import_steps_done: Mapped[int] = mapped_column(Integer, default=0)
 
     sections: Mapped[list["Section"]] = relationship(
         back_populates="course", cascade="all, delete-orphan", order_by="Section.position",

@@ -189,6 +189,8 @@ def import_course(
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         course.import_status = "running"
         course.import_error = None
+        course.import_steps_total = 0
+        course.import_steps_done = 0
         db.commit()
         background_tasks.add_task(_bg_import_stepik, course_id, payload.stepik_course_id)
         return ImportAccepted(
@@ -223,6 +225,8 @@ def get_import_status(course_id: int, db: Session = Depends(get_db)) -> ImportSt
         sections_count=sections_n,
         lessons_count=lessons_n,
         steps_count=steps_n,
+        steps_total=course.import_steps_total or 0,
+        steps_done=course.import_steps_done or 0,
     )
 
 

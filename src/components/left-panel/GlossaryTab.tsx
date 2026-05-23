@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Search, ChevronRight, ChevronDown } from 'lucide-react';
-import { useApp } from '@/store/AppContext';
+import { useApp, useApi } from '@/store/AppContext';
+import { apiEnabled } from '@/lib/api';
 import { statusDotClass } from '@/lib/constants';
 import type { FilterStatus } from '@/types';
 
@@ -15,6 +16,30 @@ export default function GlossaryTab() {
   const { state, dispatch } = useApp();
   const { filterStatus, searchTerm, selectedTermIds, hierFilterIds } = state;
   const [expandedLetters, setExpandedLetters] = useState<Record<string, boolean>>({});
+  const { apiCollectBindings } = useApi();
+  const [collecting, setCollecting] = useState(false);
+  const [collectMsg, setCollectMsg] = useState<string | null>(null);
+
+  const handleCollect = async () => {
+    if (!state.activeGlossaryId || selectedTermIds.length === 0) return;
+    setCollecting(true);
+    setCollectMsg(null);
+    try {
+      if (apiEnabled()) {
+        const report = await apiCollectBindings(state.activeGlossaryId, selectedTermIds);
+        setCollectMsg(
+          `Обработано ${report.terms_processed} терминов, создано ${report.bindings_created} связей.`,
+        );
+      } else {
+        setCollectMsg('Демо-режим: для реального сбора нужен бэкенд (VITE_USE_API=1).');
+      }
+    } catch (err) {
+      setCollectMsg(err instanceof Error ? err.message : 'Ошибка сбора данных');
+    } finally {
+      setCollecting(false);
+      setTimeout(() => setCollectMsg(null), 4000);
+    }
+  };
 
   const activeGlossary = state.courses
     .flatMap(c => c.glossaries)
@@ -195,11 +220,19 @@ export default function GlossaryTab() {
             </span>
           </div>
           <button
-            className="w-full rounded py-2 text-xs font-medium transition-all duration-200"
+            onClick={handleCollect}
+            disabled={collecting}
+            className="w-full rounded py-2 text-xs font-medium transition-all duration-200 disabled:opacity-50"
             style={{ backgroundColor: 'var(--lw-accent-graphite)', color: 'var(--lw-bg-primary)' }}
           >
-            Собрать данные для глоссария
+            {collecting ? 'Сбор данных...' : 'Собрать данные для глоссария'}
           </button>
+          {collectMsg && (
+            <p className="mt-2 text-[11px] leading-relaxed"
+              style={{ color: 'var(--lw-text-secondary)' }}>
+              {collectMsg}
+            </p>
+          )}
         </div>
       )}
     </div>

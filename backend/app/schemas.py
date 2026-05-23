@@ -189,6 +189,11 @@ class ImportStatus(BaseModel):
     sections_count: int = 0
     lessons_count: int = 0
     steps_count: int = 0
+    # Live progress for long-running Stepik imports.
+    # ``steps_total`` is fixed once the tree is fetched; ``steps_done`` ticks
+    # forward as each step is persisted.
+    steps_total: int = 0
+    steps_done: int = 0
 
 
 class CollectRequest(BaseModel):

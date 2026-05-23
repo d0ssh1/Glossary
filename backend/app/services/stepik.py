@@ -199,9 +199,23 @@ def import_course_from_stepik(db: Session, course_id: int, stepik_course_id: int
     course.title = tree.get("title", course.title)
     course.stepik_id = tree.get("stepik_id")
 
+    # Compute up-front total so the frontend can show X of N progress.
+    steps_total = sum(
+        len(l.get("steps", []))
+        for s in tree.get("sections", [])
+        for l in s.get("lessons", [])
+    )
+    course.import_steps_total = steps_total
+    course.import_steps_done = 0
+    db.commit()  # publish total immediately so polling sees it
+
     # Spec (Защита.md §"тонкость с step_url"):
     #     https://stepik.org/lesson/{lesson_id}/step/{position}?unit={unit_id}
     step_url_tmpl = "https://stepik.org/lesson/{lesson_id}/step/{position}?unit={unit_id}"
+
+    # Commit batch — large enough to amortise overhead, small enough to feel live.
+    COMMIT_EVERY = 25
+    done = 0
 
     for s_data in tree.get("sections", []):
         section = Section(
@@ -237,7 +251,12 @@ def import_course_from_stepik(db: Session, course_id: int, stepik_course_id: int
                     ),
                 )
                 db.add(step)
+                done += 1
+                if done % COMMIT_EVERY == 0:
+                    course.import_steps_done = done
+                    db.commit()
 
+    course.import_steps_done = done
     course.is_parsed = True
     course.import_date = datetime.now(timezone.utc)
     db.flush()

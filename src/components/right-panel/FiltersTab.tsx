@@ -1,15 +1,20 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import { useApp } from '@/store/AppContext';
+import type { FrequencyMode, LogicMode } from '@/store/AppContext';
 import HierarchicalFilter from './HierarchicalFilter';
 
 export default function FiltersTab() {
-  const [weightEnabled, setWeightEnabled] = useState(false);
-  const [weightFrom, setWeightFrom] = useState('0');
-  const [weightTo, setWeightTo] = useState('100');
+  const { state, dispatch } = useApp();
+  const f = state.graphFilters;
+
   const [freqExpanded, setFreqExpanded] = useState(true);
   const [logicExpanded, setLogicExpanded] = useState(true);
   const [hierExpanded, setHierExpanded] = useState(false);
   const [legendExpanded, setLegendExpanded] = useState(true);
+
+  const set = (patch: Partial<typeof f>) =>
+    dispatch({ type: 'SET_GRAPH_FILTERS', filters: patch });
 
   return (
     <div className="px-4 py-4">
@@ -19,25 +24,25 @@ export default function FiltersTab() {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <input
           type="checkbox"
-          checked={weightEnabled}
-          onChange={e => setWeightEnabled(e.target.checked)}
+          checked={f.weightEnabled}
+          onChange={e => set({ weightEnabled: e.target.checked })}
           className="accent-[var(--lw-accent-graphite)]"
         />
         <span className="text-xs" style={{ color: 'var(--lw-text-secondary)' }}>вес связи от</span>
         <input
           type="number"
-          value={weightFrom}
-          onChange={e => setWeightFrom(e.target.value)}
-          disabled={!weightEnabled}
+          value={f.weightFrom}
+          onChange={e => set({ weightFrom: Number(e.target.value) || 0 })}
+          disabled={!f.weightEnabled}
           className="w-12 rounded border px-1.5 py-0.5 text-xs outline-none disabled:opacity-40"
           style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)', color: 'var(--lw-text-primary)' }}
         />
         <span className="text-xs" style={{ color: 'var(--lw-text-muted)' }}>до</span>
         <input
           type="number"
-          value={weightTo}
-          onChange={e => setWeightTo(e.target.value)}
-          disabled={!weightEnabled}
+          value={f.weightTo}
+          onChange={e => set({ weightTo: Number(e.target.value) || 0 })}
+          disabled={!f.weightEnabled}
           className="w-12 rounded border px-1.5 py-0.5 text-xs outline-none disabled:opacity-40"
           style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)', color: 'var(--lw-text-primary)' }}
         />
@@ -45,9 +50,19 @@ export default function FiltersTab() {
 
       {/* Frequency */}
       <FilterGroup label="частота термина" expanded={freqExpanded} onToggle={() => setFreqExpanded(!freqExpanded)}>
-        {['первое появление', 'упоминания'].map(label => (
-          <label key={label} className="flex cursor-pointer items-center gap-1.5 text-xs" style={{ color: 'var(--lw-text-secondary)' }}>
-            <input type="radio" name="freq" className="accent-[var(--lw-accent-graphite)]" />
+        {([
+          ['all', 'все упоминания'],
+          ['first-appearance', 'только первое появление'],
+          ['mention', 'только повторные упоминания'],
+        ] as [FrequencyMode, string][]).map(([value, label]) => (
+          <label key={value} className="flex cursor-pointer items-center gap-1.5 text-xs" style={{ color: 'var(--lw-text-secondary)' }}>
+            <input
+              type="radio"
+              name="freq"
+              checked={f.frequency === value}
+              onChange={() => set({ frequency: value })}
+              className="accent-[var(--lw-accent-graphite)]"
+            />
             {label}
           </label>
         ))}
@@ -55,9 +70,24 @@ export default function FiltersTab() {
 
       {/* Logic */}
       <FilterGroup label="Логические функции" expanded={logicExpanded} onToggle={() => setLogicExpanded(!logicExpanded)}>
-        {['И', 'ИЛИ', 'НЕ', 'ИСКЛЮЧАЮЩЕЕ ИЛИ'].map(label => (
-          <label key={label} className="flex cursor-pointer items-center gap-1.5 text-xs" style={{ color: 'var(--lw-text-secondary)' }}>
-            <input type="radio" name="logic" className="accent-[var(--lw-accent-graphite)]" />
+        <p className="mb-1 text-[10px] italic" style={{ color: 'var(--lw-text-muted)' }}>
+          Действует только когда выделены термины (чекбоксами). Узел остаётся,
+          если он связан с выделенными согласно выбранной операции.
+        </p>
+        {([
+          ['or', 'ИЛИ — связан хотя бы с одним'],
+          ['and', 'И — связан со всеми сразу'],
+          ['not', 'НЕ — не связан ни с одним'],
+          ['xor', 'ИСКЛЮЧАЮЩЕЕ ИЛИ — ровно с одним'],
+        ] as [LogicMode, string][]).map(([value, label]) => (
+          <label key={value} className="flex cursor-pointer items-center gap-1.5 text-xs" style={{ color: 'var(--lw-text-secondary)' }}>
+            <input
+              type="radio"
+              name="logic"
+              checked={f.logic === value}
+              onChange={() => set({ logic: value })}
+              className="accent-[var(--lw-accent-graphite)]"
+            />
             {label}
           </label>
         ))}
