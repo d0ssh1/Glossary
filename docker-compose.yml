@@ -14,7 +14,7 @@ services:
   web:
     build:
       context: .
-      dockerfile: Dockerfile.frontend
+      dockerfile: docker/web.Dockerfile
     container_name: lw-web
     ports:
       - "5173:5173"

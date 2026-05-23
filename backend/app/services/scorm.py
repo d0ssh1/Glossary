@@ -1,6 +1,6 @@
 """SCORM 1.2 / 2004 ZIP package builder.
 
-Builds the archive entirely in memory (`io.BytesIO` + `zipfile`) per info.md.
+Builds the archive entirely in memory (`io.BytesIO` + `zipfile`).
 Contents:
     imsmanifest.xml   — SCORM manifest (1.2 or 2004)
     data.json         — full glossary tree consumed by the bundled player

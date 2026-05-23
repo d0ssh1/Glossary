@@ -1,11 +1,13 @@
-import path from "path"
-import react from "@vitejs/plugin-react"
-import { defineConfig } from "vite"
-import { inspectAttr } from 'kimi-plugin-inspect-react'
+/// <reference types="vitest/config" />
+import path from "path";
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
+import { inspectAttr } from "kimi-plugin-inspect-react";
 
 // https://vite.dev/config/
+// Vitest test settings live alongside Vite config — one source of truth.
 export default defineConfig({
-  base: './',
+  base: "./",
   plugins: [inspectAttr(), react()],
   server: {
     port: 5173,
@@ -14,5 +16,11 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+  },
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: ["./src/test/setup.ts"],
+    exclude: ["node_modules", "dist", "e2e", ".idea", ".git", ".cache"],
   },
 });

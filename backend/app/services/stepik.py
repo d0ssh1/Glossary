@@ -1,6 +1,6 @@
 """Stepik OAuth 2.0 client + course-tree fetcher.
 
-Implements Client Credentials Flow per ``info.md`` §"парсинг":
+Implements OAuth 2.0 Client Credentials Flow:
     1. POST /oauth2/token/ with HTTPBasicAuth(client_id, client_secret) and
        grant_type=client_credentials → access_token cached in-memory.
     2. Walk ``courses → sections → units → lessons → steps`` using the bearer

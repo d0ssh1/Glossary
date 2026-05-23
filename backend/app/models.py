@@ -1,6 +1,6 @@
 """SQLAlchemy ORM models.
 
-Mirrors the schema described in info.md:
+Schema:
     Course -> Section -> Lesson -> Step
     Course -> Glossary -> Term
     Term <-> Step via TermStepBinding (many-to-many)

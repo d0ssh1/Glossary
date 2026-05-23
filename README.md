@@ -45,6 +45,23 @@
 ## Архитектура
 
 ```
+.
+├── src/                         # фронтенд (см. подробное дерево ниже)
+├── backend/                     # FastAPI + SQLAlchemy + SQLite (свой README)
+├── e2e/                         # Playwright smoke-сценарии
+├── docker/                      # Dockerfile фронта (бэка лежит в backend/)
+├── docker-compose.yml           # api + web для one-command запуска
+├── package.json, tsconfig*.json # конфиги фронта
+├── vite.config.ts               # Vite + Vitest (общий defineConfig)
+├── playwright.config.ts
+├── tailwind.config.js / postcss.config.js / eslint.config.js
+├── components.json              # shadcn-ui config
+└── README.md
+```
+
+Внутри `src/`:
+
+```
 src/
 ├── App.tsx                       # точка входа (provider + screen-роутер)
 ├── main.tsx
@@ -278,12 +295,21 @@ pytest -q                       # 5 тестов
 
 ---
 
-## Дальнейшие шаги (за пределами фронт-MVP)
+## Дальнейшие улучшения
 
-Эти куски требуют отдельной серверной части и отдельного спринта; фронт спроектирован так, чтобы их подключение не ломало UI-слой.
+Базовая спецификация реализована полностью (см. историю коммитов). Что можно
+доделать сверху для production:
 
-- **FastAPI-бэкенд.** Реализовать REST-эндпоинты `/courses`, `/glossaries`, `/terms`, `/bindings`, `/scorm/export`, заменить чтения из `mock.ts` на `fetch`-запросы в `store/AppContext.tsx`. Схема таблиц (`Course`, `Section`, `Lesson`, `Step`, `Glossary`, `Term`, `Term_Step_Binding`, `CourseSearch_FTS`) — в `info.md`.
-- **Интеграция со Stepik API.** Заменить симулированный прогресс в `ConnectionSettingsModal` на реальные запросы `httpx` к Stepik с OAuth 2.0 Client Credentials.
-- **Парсер шагов и FTS5.** Чистка HTML через BeautifulSoup, индексация `clean_text` в виртуальной таблице `CourseSearch_FTS`, обработчик кнопки «Собрать данные для глоссария» с поиском вхождений и созданием `Term_Step_Binding`.
-- **SCORM-плеер.** Отдельный `scorm_player.html` с урезанным JS (без редактирования), сборка ZIP с `imsmanifest.xml` и `data.json` в FastAPI через `io.BytesIO` + `zipfile`.
-- **Тестовое покрытие.** Vitest для reducer'а в `AppContext`, для `buildGraphData` и для логики иерархического фильтра. Playwright для сценариев «открыть глоссарий → выделить термины → собрать данные», «двойной клик по модулю → drill-down → выбрать термин → сохранить определение», «экспорт SCORM».
+- **Внешний кеш для Stepik OAuth-токена.** Сейчас токен живёт в памяти процесса
+  uvicorn; для горизонтального масштабирования нужен Redis или аналогичное хранилище.
+- **Playwright e2e против реального бэкенда.** Текущие e2e-тесты гоняются по моковой
+  ветке. Чтобы тестировать против работающего API, добавьте в `playwright.config.ts`
+  `webServer` с подъёмом `docker-compose up` или последовательным запуском
+  uvicorn + vite, и переменную `VITE_USE_API=1`.
+- **Прогресс-бар по секундам HTTP-fetch.** `import_steps_done/total` уже тикают на
+  фазе персистенса. Бутылочное горлышко импорта Stepik — это HTTP-запросы к API
+  до начала персистенса; чтобы показывать честный прогресс и в этой фазе, нужно
+  декомпозировать `fetch_course_tree` на этапы и публиковать промежуточные счётчики.
+- **Реальный drag-binding из LinkEditor.** Сейчас правка связей в правой панели
+  сохраняется через `apiUpdateTerm`. Можно добавить полноценный diff и POST/DELETE
+  по эндпоинтам `/bindings` для ручной правки без перевыполнения collect.
