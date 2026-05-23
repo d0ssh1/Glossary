@@ -46,18 +46,25 @@
 
 ```
 .
-├── src/                         # фронтенд (см. подробное дерево ниже)
+├── src/                         # фронтенд (подробное дерево ниже)
 ├── backend/                     # FastAPI + SQLAlchemy + SQLite (свой README)
-├── e2e/                         # Playwright smoke-сценарии
-├── docker/                      # Dockerfile фронта (бэка лежит в backend/)
+├── e2e/                         # Playwright: конфиг + smoke-сценарии
+├── docker/                      # Dockerfile фронта (бэка — в backend/)
 ├── docker-compose.yml           # api + web для one-command запуска
-├── package.json, tsconfig*.json # конфиги фронта
-├── vite.config.ts               # Vite + Vitest (общий defineConfig)
-├── playwright.config.ts
-├── tailwind.config.js / postcss.config.js / eslint.config.js
-├── components.json              # shadcn-ui config
-└── README.md
+├── vite.config.ts               # Vite + Vitest + PostCSS (общий defineConfig)
+├── tsconfig.json / .app / .node # TS project references — обязаны быть в корне
+├── tailwind.config.js           # читается Tailwind IntelliSense из корня
+├── eslint.config.js             # flat config, конвенция корня
+├── components.json              # shadcn-ui CLI ищет конфиг в корне
+├── package.json, package-lock.json, index.html  # npm + Vite
+└── README.md, .gitignore, .env.example, .dockerignore
 ```
+
+Большая часть корневых файлов жёстко привязана к корню инструментами
+(npm, Vite, TypeScript, ESLint, Tailwind IntelliSense), либо это
+дотфайлы-конвенции. Что было можно вынести — вынесено: PostCSS-плагины
+теперь живут в `vite.config.ts` через `css.postcss`, Vitest — там же
+через `test:`, Playwright-конфиг переехал в `e2e/`.
 
 Внутри `src/`:
 

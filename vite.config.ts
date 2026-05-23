@@ -1,11 +1,14 @@
 /// <reference types="vitest/config" />
 import path from "path";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "tailwindcss";
+import autoprefixer from "autoprefixer";
 import { defineConfig } from "vite";
 import { inspectAttr } from "kimi-plugin-inspect-react";
 
 // https://vite.dev/config/
-// Vitest test settings live alongside Vite config — one source of truth.
+// Vitest test settings + PostCSS pipeline all live alongside Vite config —
+// one source of truth, no separate vitest.config.ts / postcss.config.js.
 export default defineConfig({
   base: "./",
   plugins: [inspectAttr(), react()],
@@ -15,6 +18,11 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+    },
+  },
+  css: {
+    postcss: {
+      plugins: [tailwindcss(), autoprefixer()],
     },
   },
   test: {
