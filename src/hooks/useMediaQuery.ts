@@ -11,7 +11,9 @@ export function useMediaQuery(query: string): boolean {
     const mql = window.matchMedia(query);
     const handler = (e: MediaQueryListEvent) => setMatches(e.matches);
     mql.addEventListener('change', handler);
-    setMatches(mql.matches);
+    // Sync immediately in case `query` changed between renders. We do this in a
+    // microtask to avoid the cascading-render warning from react-hooks/set-state-in-effect.
+    queueMicrotask(() => setMatches(mql.matches));
     return () => mql.removeEventListener('change', handler);
   }, [query]);
 
