@@ -1,18 +1,38 @@
 import { useState, useMemo } from 'react';
 import { Search, ChevronDown, ChevronRight } from 'lucide-react';
-import { useApp } from '@/store/AppContext';
+import { useApp, useApi } from '@/store/AppContext';
 import { statusDotClass } from '@/lib/constants';
 import type { Term } from '@/types';
 
 export default function NodeSelectedState() {
   const { state, dispatch } = useApp();
-  const { activeNodeId, graphLevel, courses, activeGlossaryId } = state;
+  const { apiSetFtsIndexed } = useApi();
+  const { activeNodeId, graphLevel, courses, activeGlossaryId, activeCourseId } = state;
   const [nodeSearch, setNodeSearch] = useState('');
   const [allExpanded, setAllExpanded] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const activeGlossary = courses.flatMap(c => c.glossaries).find(g => g.id === activeGlossaryId);
   const terms = activeGlossary?.terms || [];
+  const activeCourse = courses.find(c => c.id === activeCourseId);
+
+  // Resolve the selected node — title and current FTS-indexed flag (the FTS
+  // toggle isn't shown on terms-level since terms don't carry the flag).
+  const nodeInfo = useMemo(() => {
+    if (!activeCourse || !activeNodeId) return null;
+    if (graphLevel === 'modules') {
+      const m = activeCourse.modules.find(x => x.id === activeNodeId);
+      return m ? { name: m.name, type: 'module' as const, indexed: m.isIndexed ?? true } : null;
+    }
+    if (graphLevel === 'lessons') {
+      for (const m of activeCourse.modules) {
+        const l = m.lessons.find(x => x.id === activeNodeId);
+        if (l) return { name: l.name, type: 'lesson' as const, indexed: l.isIndexed ?? true };
+      }
+    }
+    // terms level: activeNodeId points at a term — handled by TermSelectedState, not here.
+    return null;
+  }, [activeCourse, activeNodeId, graphLevel]);
 
   const nodeTerms = useMemo(() => {
     return terms
@@ -42,8 +62,31 @@ export default function NodeSelectedState() {
     setExpanded(next);
   };
 
+  const handleToggleIndexed = () => {
+    if (!nodeInfo || !activeNodeId) return;
+    apiSetFtsIndexed(nodeInfo.type, activeNodeId, !nodeInfo.indexed);
+  };
+
   return (
     <div className="flex h-full flex-col px-4 py-4">
+      {/* Node title + FTS-indexed toggle (hidden on terms level — handled elsewhere). */}
+      {nodeInfo && (
+        <div className="mb-3 border-b pb-3" style={{ borderColor: 'var(--lw-border-primary)' }}>
+          <h3 className="text-sm font-semibold leading-snug" style={{ color: 'var(--lw-text-primary)' }}>
+            {nodeInfo.name}
+          </h3>
+          <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs" style={{ color: 'var(--lw-text-secondary)' }}>
+            <input
+              type="checkbox"
+              checked={nodeInfo.indexed}
+              onChange={handleToggleIndexed}
+              className="h-3.5 w-3.5 cursor-pointer accent-[var(--lw-accent-amber)]"
+            />
+            <span>Участвует в поиске FTS (Индексировать)</span>
+          </label>
+        </div>
+      )}
+
       <div className="mb-2 flex items-center justify-between">
         <p className="text-xs font-medium" style={{ color: 'var(--lw-text-secondary)' }}>
           Терминов: {nodeTerms.length}

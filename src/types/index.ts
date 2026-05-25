@@ -74,6 +74,8 @@ export interface Module {
   name: string;
   courseId: string;
   lessons: Lesson[];
+  /** Mirrors backend `Section.is_indexed`. Undefined === treated as `true` for legacy mock data. */
+  isIndexed?: boolean;
   x?: number;
   y?: number;
   fx?: number | null;
@@ -85,6 +87,8 @@ export interface Lesson {
   name: string;
   moduleId: string;
   steps: Step[];
+  /** Mirrors backend `Lesson.is_indexed`. Undefined === treated as `true`. */
+  isIndexed?: boolean;
   x?: number;
   y?: number;
   fx?: number | null;
@@ -116,6 +120,8 @@ export interface GraphNode {
 }
 
 export interface GraphLink {
+  /** Synthetic id: "<sourceId>__<targetId>" — used for selection state. */
+  id: string;
   source: string | GraphNode;
   target: string | GraphNode;
   type: LinkType;

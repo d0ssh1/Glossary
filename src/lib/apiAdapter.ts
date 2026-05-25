@@ -85,9 +85,9 @@ export function mapCourseFull(api: ApiCourseFull, glossaries: ApiGlossaryFull[])
         content: '',
         ftsIndexed: lesson.is_indexed,
       }));
-      return { id: lessonId, name: lesson.title, moduleId, steps };
+      return { id: lessonId, name: lesson.title, moduleId, steps, isIndexed: lesson.is_indexed };
     });
-    return { id: moduleId, name: section.title, courseId, lessons };
+    return { id: moduleId, name: section.title, courseId, lessons, isIndexed: section.is_indexed };
   });
 
   const stepIndex = indexSteps(api);

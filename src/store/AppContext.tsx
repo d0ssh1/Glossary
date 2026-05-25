@@ -14,6 +14,7 @@ import {
   bulkCreateTerms as apiBulkCreateTermsRaw,
   importCourse as apiImportCourseRaw, downloadScorm as apiDownloadScormRaw,
   collectBindings as apiCollectBindingsRaw, getImportStatus as apiGetImportStatus,
+  patchSection as apiPatchSection, patchLesson as apiPatchLesson,
 } from '@/lib/api';
 import { mapCourseFull, stringIdToNumeric, numericToId } from '@/lib/apiAdapter';
 
@@ -44,6 +45,8 @@ interface AppState {
   activeGlossaryId: string | null;
   activeTermId: string | null;
   activeNodeId: string | null;
+  /** Selected edge id (format: "<sourceId>__<targetId>"). Mutually exclusive with activeNodeId/activeTermId. */
+  activeLinkId: string | null;
   graphLevel: GraphLevel;
   breadcrumbs: BreadcrumbItem[];
   modal: ModalType;
@@ -72,6 +75,7 @@ const initialState: AppState = {
   activeGlossaryId: null,
   activeTermId: null,
   activeNodeId: null,
+  activeLinkId: null,
   graphLevel: 'modules',
   breadcrumbs: [],
   modal: null,
@@ -99,6 +103,8 @@ type Action =
   | { type: 'SET_ACTIVE_GLOSSARY'; glossaryId: string | null }
   | { type: 'SET_ACTIVE_TERM'; termId: string | null }
   | { type: 'SET_ACTIVE_NODE'; nodeId: string | null }
+  | { type: 'SET_ACTIVE_LINK'; linkId: string | null }
+  | { type: 'SET_FTS_INDEXED'; nodeType: 'module' | 'lesson'; nodeId: string; value: boolean }
   | { type: 'SET_GRAPH_LEVEL'; level: GraphLevel; breadcrumbs: BreadcrumbItem[] }
   | { type: 'DRILL_DOWN'; nodeId: string; nodeName: string; level: GraphLevel }
   | { type: 'BREADCRUMB_NAV'; index: number }
@@ -135,18 +141,40 @@ export function appReducer(state: AppState, action: Action): AppState {
     case 'SET_ACTIVE_COURSE':
       return { ...state, activeCourseId: action.courseId };
     case 'SET_ACTIVE_GLOSSARY':
-      return { ...state, activeGlossaryId: action.glossaryId, activeTermId: null, activeNodeId: null };
+      return { ...state, activeGlossaryId: action.glossaryId, activeTermId: null, activeNodeId: null, activeLinkId: null };
     case 'SET_ACTIVE_TERM': {
       if (state.hasUnsavedChanges && action.termId !== state.activeTermId) {
         return { ...state, modal: 'unsaved-changes', pendingNavigation: () => ({ type: 'SET_ACTIVE_TERM', termId: action.termId }) };
       }
-      return { ...state, activeTermId: action.termId, activeNodeId: null, hasUnsavedChanges: false };
+      return { ...state, activeTermId: action.termId, activeNodeId: null, activeLinkId: null, hasUnsavedChanges: false };
     }
     case 'SET_ACTIVE_NODE': {
       if (state.hasUnsavedChanges && action.nodeId !== state.activeNodeId) {
         return { ...state, modal: 'unsaved-changes', pendingNavigation: () => ({ type: 'SET_ACTIVE_NODE', nodeId: action.nodeId }) };
       }
-      return { ...state, activeNodeId: action.nodeId, activeTermId: null, hasUnsavedChanges: false };
+      return { ...state, activeNodeId: action.nodeId, activeTermId: null, activeLinkId: null, hasUnsavedChanges: false };
+    }
+    case 'SET_ACTIVE_LINK':
+      return { ...state, activeLinkId: action.linkId, activeNodeId: null, activeTermId: null };
+    case 'SET_FTS_INDEXED': {
+      // Mirror backend semantics: flag lives on Section (Module) or Lesson directly.
+      const courses = state.courses.map(c => ({
+        ...c,
+        modules: c.modules.map(m => {
+          if (action.nodeType === 'module') {
+            if (m.id !== action.nodeId) return m;
+            return { ...m, isIndexed: action.value };
+          }
+          // Lesson-level toggle: find the host module.
+          return {
+            ...m,
+            lessons: m.lessons.map(l =>
+              l.id === action.nodeId ? { ...l, isIndexed: action.value } : l,
+            ),
+          };
+        }),
+      }));
+      return { ...state, courses };
     }
     case 'SET_GRAPH_LEVEL':
       return { ...state, graphLevel: action.level, breadcrumbs: action.breadcrumbs };
@@ -513,9 +541,38 @@ export function useApi() {
     return report;
   }, [state.courses, apiRefetchCourse]);
 
+  const apiSetFtsIndexed = useCallback(async (
+    nodeType: 'module' | 'lesson', nodeId: string, value: boolean,
+  ) => {
+    // Optimistic local update first — UI snaps immediately.
+    dispatch({ type: 'SET_FTS_INDEXED', nodeType, nodeId, value });
+    if (!apiEnabled()) return;
+    // We need the parent course's numeric id for the PATCH path.
+    const course = state.courses.find(c =>
+      c.modules.some(m =>
+        (nodeType === 'module' && m.id === nodeId) ||
+        (nodeType === 'lesson' && m.lessons.some(l => l.id === nodeId)),
+      ),
+    );
+    if (!course) return;
+    const cNum = stringIdToNumeric(course.id);
+    try {
+      if (nodeType === 'module') {
+        await apiPatchSection(cNum, stringIdToNumeric(nodeId), { is_indexed: value });
+      } else {
+        await apiPatchLesson(cNum, stringIdToNumeric(nodeId), { is_indexed: value });
+      }
+    } catch (err) {
+      console.error('[useApi] setFtsIndexed failed', err);
+      // Rollback on failure.
+      dispatch({ type: 'SET_FTS_INDEXED', nodeType, nodeId, value: !value });
+    }
+  }, [dispatch, state.courses]);
+
   return {
     apiCreateCourse, apiCreateGlossary,
     apiUpdateTerm, apiDeleteTerm, apiBulkAddTerms,
     apiImportCourse, apiDownloadScorm, apiCollectBindings, apiRefetchCourse,
+    apiSetFtsIndexed,
   };
 }

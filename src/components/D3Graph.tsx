@@ -13,7 +13,7 @@ export default function D3Graph() {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { state, dispatch } = useApp();
-  const { graphLevel, activeNodeId, activeGlossaryId, activeCourseId, breadcrumbs, courses, hierFilterIds, graphFilters, selectedTermIds } = state;
+  const { graphLevel, activeNodeId, activeLinkId, activeGlossaryId, activeCourseId, breadcrumbs, courses, hierFilterIds, graphFilters, selectedTermIds } = state;
 
   // Active course + glossary
   const activeCourse = courses.find(c => c.id === activeCourseId);
@@ -286,8 +286,10 @@ export default function D3Graph() {
       .on('mouseleave', function () {
         nodeGroup.style('opacity', 1);
         link.style('opacity', 0.7)
-          .attr('stroke', (d: GraphLink) => linkHex[d.type])
-          .attr('stroke-width', (d: GraphLink) => 1 + (d.weight || 1) * 0.5);
+          .attr('stroke', (d: GraphLink) => activeLinkId && d.id === activeLinkId ? '#D4A056' : linkHex[d.type])
+          .attr('stroke-width', (d: GraphLink) => activeLinkId && d.id === activeLinkId
+            ? 2 + (d.weight || 1)
+            : 1 + (d.weight || 1) * 0.5);
       })
       .on('click', function (_event: unknown, d: GraphNode) {
         const now = Date.now();
@@ -307,6 +309,22 @@ export default function D3Graph() {
         }
       });
 
+    // Link click — open "Смежные термины X и Y" panel.
+    link
+      .style('cursor', 'pointer')
+      .on('click', function (event: Event, d: GraphLink) {
+        event.stopPropagation();
+        dispatch({ type: 'SET_ACTIVE_LINK', linkId: d.id });
+      });
+
+    // Visually mark the active link (selected via click).
+    if (activeLinkId) {
+      link
+        .filter((d: GraphLink) => d.id === activeLinkId)
+        .attr('stroke', '#D4A056')
+        .attr('stroke-width', (d: GraphLink) => 2 + (d.weight || 1));
+    }
+
     // Link hover
     link
       .on('mouseenter', function (_event: unknown, hovered: GraphLink) {
@@ -320,15 +338,17 @@ export default function D3Graph() {
       })
       .on('mouseleave', function () {
         link.style('opacity', 0.7)
-          .attr('stroke', (d: GraphLink) => linkHex[d.type])
-          .attr('stroke-width', (d: GraphLink) => 1 + (d.weight || 1) * 0.5);
+          .attr('stroke', (d: GraphLink) => activeLinkId && d.id === activeLinkId ? '#D4A056' : linkHex[d.type])
+          .attr('stroke-width', (d: GraphLink) => activeLinkId && d.id === activeLinkId
+            ? 2 + (d.weight || 1)
+            : 1 + (d.weight || 1) * 0.5);
         nodeGroup.style('opacity', 1);
       });
 
     return () => {
       simulation.stop();
     };
-  }, [graphLevel, activeNodeId, activeCourse, activeGlossary, allTerms, drillModuleId, drillLessonId, hierFilterIds, graphFilters, selectedTermIds, dispatch]);
+  }, [graphLevel, activeNodeId, activeLinkId, activeCourse, activeGlossary, allTerms, drillModuleId, drillLessonId, hierFilterIds, graphFilters, selectedTermIds, dispatch]);
 
   return (
     <div ref={containerRef} className="relative h-full w-full">

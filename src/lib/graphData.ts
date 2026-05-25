@@ -187,6 +187,7 @@ function buildModulesGraph(course: Course, allTerms: Term[]) {
       );
       if (shared === 0) continue;
       links.push({
+        id: `${a}__${b}`,
         source: a,
         target: b,
         type: 'first-appearance',
@@ -229,6 +230,7 @@ function buildLessonsGraph(course: Course, allTerms: Term[], drillModuleId: stri
       );
       if (shared === 0) continue;
       links.push({
+        id: `${a}__${b}`,
         source: a,
         target: b,
         type: 'first-appearance',
@@ -303,6 +305,7 @@ function buildTermsGraph(
   ];
 
   const links: GraphLink[] = visible.map(e => ({
+    id: `${centerId}__${e.term.id}`,
     source: centerId,
     target: e.term.id,
     type: e.linkType,

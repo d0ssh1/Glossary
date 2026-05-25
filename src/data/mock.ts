@@ -1,7 +1,7 @@
 // ============================================================
 // MOCK DATA — Lexicon Weaver
 // ============================================================
-import type { Course, Term, GraphNode, GraphLink, LinkType } from '@/types';
+import type { Course, Term } from '@/types';
 
 // --- Terms for Course 1, Module 1, Lesson 1 ---
 const termsM1L1: Term[] = [
@@ -233,53 +233,9 @@ export const mockCourses: Course[] = [
   },
 ];
 
-// ============================================================
-// GRAPH DATA — Module Level
-// ============================================================
-export const moduleGraphNodes: GraphNode[] = [
-  { id: 'm1', name: 'Модуль 1\nОсновы SQL', type: 'module' },
-  { id: 'm2', name: 'Модуль 2\nРабота с данными', type: 'module' },
-  { id: 'm3', name: 'Модуль 3\nЗадачи и проекты', type: 'module' },
-];
-
-export const moduleGraphLinks: GraphLink[] = [
-  { source: 'm1', target: 'm2', type: 'mention', weight: 8 },
-  { source: 'm2', target: 'm3', type: 'mention', weight: 12 },
-  { source: 'm1', target: 'm3', type: 'first-appearance', weight: 5 },
-];
-
-// Graph data for lessons inside Module 1
-export const lessonGraphNodesM1: GraphNode[] = [
-  { id: 'm1l1', name: 'Урок 1.1\nОтношение', type: 'lesson', parentId: 'm1' },
-  { id: 'm1l2', name: 'Урок 1.2\nСоздание таблиц', type: 'lesson', parentId: 'm1' },
-  { id: 'm1l3', name: 'Урок 1.3\nТипы данных', type: 'lesson', parentId: 'm1' },
-  { id: 'm1l4', name: 'Урок 1.4\nВложенные запросы', type: 'lesson', parentId: 'm1' },
-  { id: 'm1l5', name: 'Урок 1.5\nАгрегатные функции', type: 'lesson', parentId: 'm1' },
-  { id: 'm1l6', name: 'Урок 1.6\nГруппировка', type: 'lesson', parentId: 'm1' },
-];
-
-export const lessonGraphLinksM1: GraphLink[] = [
-  { source: 'm1l1', target: 'm1l2', type: 'first-appearance', weight: 6 },
-  { source: 'm1l2', target: 'm1l3', type: 'mention', weight: 4 },
-  { source: 'm1l3', target: 'm1l4', type: 'first-appearance', weight: 7 },
-  { source: 'm1l4', target: 'm1l5', type: 'mention', weight: 3 },
-  { source: 'm1l5', target: 'm1l6', type: 'first-appearance', weight: 5 },
-  { source: 'm1l1', target: 'm1l4', type: 'mention', weight: 2 },
-  { source: 'm1l2', target: 'm1l5', type: 'mention', weight: 3 },
-];
-
-// Graph data for terms inside Lesson 1.1
-export const termGraphNodesL1: GraphNode[] = [
-  { id: 'center-m1l1', name: 'Урок 1.1\nОтношение', type: 'lesson', parentId: 'm1l1' },
-  ...termsM1L1.map(t => ({ id: t.id, name: t.name, type: 'term' as const, status: t.status, parentId: 'm1l1' })),
-];
-
-export const termGraphLinksL1: GraphLink[] = termsM1L1.map((t, i) => ({
-  source: 'center-m1l1',
-  target: t.id,
-  type: (i % 2 === 0 ? 'first-appearance' : 'mention') as LinkType,
-  weight: 1 + (i % 3),
-}));
+// Note: legacy fixed-shape graph nodes/links (`moduleGraphNodes`,
+// `lessonGraphLinksM1`, …) were removed — graph data is now derived dynamically
+// from `course.modules` + terms by `src/lib/graphData.ts::buildGraphData`.
 
 // Export all terms flat for the glossary panel
 export const allTerms = [
