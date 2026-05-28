@@ -92,11 +92,9 @@ function applyLogicFilter(
 
   const isConnected = (node: GraphNode): number => {
     if (level === 'terms') return selectedTermIds.includes(node.id) ? 1 : 0;
-    const fieldVal = (t: Term) => (level === 'modules' ? t.moduleId : t.lessonId);
-    return selectedTerms.reduce(
-      (acc, t) => acc + (fieldVal(t) === node.id ? 1 : 0),
-      0,
-    );
+    const check = (t: Term) =>
+      level === 'modules' ? termInModule(t, node.id) : termInLesson(t, node.id);
+    return selectedTerms.reduce((acc, t) => acc + (check(t) ? 1 : 0), 0);
   };
 
   const keep = (node: GraphNode): boolean => {
@@ -123,6 +121,23 @@ function applyLogicFilter(
 /** Normalize term names for cross-module/lesson sharing comparison. */
 function norm(name: string): string {
   return name.trim().toLowerCase();
+}
+
+/**
+ * Is the term "present" in the given module? Uses the real bindings
+ * (`term.connections[]`) first — a single term can be bound to steps across
+ * many modules. Falls back to `term.moduleId` (the legacy single-home field)
+ * when connections haven't been populated (e.g. before "Собрать данные").
+ */
+function termInModule(t: Term, moduleId: string): boolean {
+  if (t.connections.some(c => c.moduleId === moduleId)) return true;
+  return t.moduleId === moduleId;
+}
+
+/** Same idea, scoped to a single lesson. */
+function termInLesson(t: Term, lessonId: string): boolean {
+  if (t.connections.some(c => c.lessonId === lessonId)) return true;
+  return t.lessonId === lessonId;
 }
 
 /** Count shared terms (by normalized name) between two groups. */
@@ -168,12 +183,15 @@ function buildModulesGraph(course: Course, allTerms: Term[]) {
     id: m.id, name: m.name, type: 'module',
   }));
 
-  // Pre-bucket terms by module for O(M^2) pair scan instead of O(M^2 * T).
+  // Pre-bucket terms by module via real bindings — one term can appear in
+  // many modules at once (different steps), so we cross-list it rather than
+  // bucketing by the single `t.moduleId` home field.
   const termsByModule = new Map<string, Term[]>();
+  for (const m of course.modules) termsByModule.set(m.id, []);
   for (const t of allTerms) {
-    const arr = termsByModule.get(t.moduleId) || [];
-    arr.push(t);
-    termsByModule.set(t.moduleId, arr);
+    for (const m of course.modules) {
+      if (termInModule(t, m.id)) termsByModule.get(m.id)!.push(t);
+    }
   }
 
   const links: GraphLink[] = [];
@@ -212,11 +230,14 @@ function buildLessonsGraph(course: Course, allTerms: Term[], drillModuleId: stri
   }));
 
   const termsByLesson = new Map<string, Term[]>();
+  for (const l of mod.lessons) termsByLesson.set(l.id, []);
   for (const t of allTerms) {
-    if (t.moduleId !== mod.id) continue;
-    const arr = termsByLesson.get(t.lessonId) || [];
-    arr.push(t);
-    termsByLesson.set(t.lessonId, arr);
+    // A term participates in this module's lessons-level graph if any of its
+    // bindings live in the module — not just if its "home lesson" is here.
+    if (!termInModule(t, mod.id)) continue;
+    for (const l of mod.lessons) {
+      if (termInLesson(t, l.id)) termsByLesson.get(l.id)!.push(t);
+    }
   }
 
   const links: GraphLink[] = [];
@@ -262,19 +283,26 @@ function buildTermsGraph(
 
   const lessonOrder = buildLessonOrder(course);
   const currentPos = lessonOrder.get(lesson.id) ?? Number.MAX_SAFE_INTEGER;
-  const lessonTerms = allTerms.filter(t => t.lessonId === lesson.id);
+  // Pick terms by any binding in this lesson, not just the legacy single-home field.
+  const lessonTerms = allTerms.filter(t => termInLesson(t, lesson.id));
   const centerId = `center-${lesson.id}`;
 
-  // Earliest course position where any term with the same (normalized) name
-  // first appears — accounting for cross-lesson declarations and occurrences.
-  // Two terms with the same display name in different lessons are treated as
-  // the same concept for "first appearance" purposes.
+  // Earliest course position where a term with the same (normalized) name
+  // first appears in the course. We consider every place we know about:
+  //  - the term's "home" lesson field (legacy primary-binding pointer)
+  //  - every binding/connection lessonId (true cross-module presence)
+  //  - any populated occurrences[] (after the modal lazy-fetches them)
+  // The minimum across all of these is the term's first-appearance position.
   const earliestByName = new Map<string, number>();
   for (const t of allTerms) {
     const key = norm(t.name);
     const positions: number[] = [];
     const homePos = lessonOrder.get(t.lessonId);
     if (homePos !== undefined) positions.push(homePos);
+    for (const c of t.connections) {
+      const p = lessonOrder.get(c.lessonId);
+      if (p !== undefined) positions.push(p);
+    }
     for (const occ of t.occurrences || []) {
       const p = lessonOrder.get(occ.lessonId);
       if (p !== undefined) positions.push(p);

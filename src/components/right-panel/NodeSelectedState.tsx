@@ -46,12 +46,18 @@ export default function NodeSelectedState() {
   }, [activeCourse, activeNodeId, graphLevel, lessonDrillId]);
 
   const nodeTerms = useMemo(() => {
+    // Match against real bindings (term.connections) — a term can live in
+    // multiple modules/lessons via different steps. Fall back to the legacy
+    // moduleId/lessonId home-field when bindings haven't been collected yet.
+    const inModule = (t: typeof terms[number], mid: string) =>
+      t.connections.some(c => c.moduleId === mid) || t.moduleId === mid;
+    const inLesson = (t: typeof terms[number], lid: string) =>
+      t.connections.some(c => c.lessonId === lid) || t.lessonId === lid;
     return terms
       .filter(t => {
-        if (graphLevel === 'modules') return t.moduleId === activeNodeId;
-        if (graphLevel === 'lessons') return t.lessonId === activeNodeId;
-        // terms-level: list terms of the drilled lesson, not the whole glossary.
-        if (graphLevel === 'terms' && lessonDrillId) return t.lessonId === lessonDrillId;
+        if (graphLevel === 'modules' && activeNodeId) return inModule(t, activeNodeId);
+        if (graphLevel === 'lessons' && activeNodeId) return inLesson(t, activeNodeId);
+        if (graphLevel === 'terms' && lessonDrillId) return inLesson(t, lessonDrillId);
         return true;
       })
       .filter(t => !nodeSearch.trim() || t.name.toLowerCase().includes(nodeSearch.toLowerCase()));

@@ -38,15 +38,21 @@ export default function LinkSelectedState() {
     }
     const [aId, bId] = activeLinkId.split('__');
 
+    // Match terms via their real bindings, with legacy home-field fallback.
+    const inModule = (t: Term, mid: string) =>
+      t.connections.some(c => c.moduleId === mid) || t.moduleId === mid;
+    const inLesson = (t: Term, lid: string) =>
+      t.connections.some(c => c.lessonId === lid) || t.lessonId === lid;
+
     const resolve = (nodeId: string): { name: string; terms: Term[] } => {
       if (graphLevel === 'modules') {
         const m = activeCourse.modules.find(x => x.id === nodeId);
-        return { name: m?.name ?? nodeId, terms: allTerms.filter(t => t.moduleId === nodeId) };
+        return { name: m?.name ?? nodeId, terms: allTerms.filter(t => inModule(t, nodeId)) };
       }
       if (graphLevel === 'lessons') {
         for (const m of activeCourse.modules) {
           const l = m.lessons.find(x => x.id === nodeId);
-          if (l) return { name: l.name, terms: allTerms.filter(t => t.lessonId === nodeId) };
+          if (l) return { name: l.name, terms: allTerms.filter(t => inLesson(t, nodeId)) };
         }
         return { name: nodeId, terms: [] };
       }
@@ -54,7 +60,7 @@ export default function LinkSelectedState() {
         const lessonId = nodeId.replace(/^center-/, '');
         for (const m of activeCourse.modules) {
           const l = m.lessons.find(x => x.id === lessonId);
-          if (l) return { name: l.name, terms: allTerms.filter(t => t.lessonId === lessonId) };
+          if (l) return { name: l.name, terms: allTerms.filter(t => inLesson(t, lessonId)) };
         }
         return { name: nodeId, terms: [] };
       }

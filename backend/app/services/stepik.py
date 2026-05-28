@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 import httpx
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -239,7 +240,24 @@ def import_course_from_stepik(db: Session, course_id: int, stepik_course_id: int
     db.flush()
 
     course.title = tree.get("title", course.title)
-    course.stepik_id = tree.get("stepik_id")
+    new_stepik_id = tree.get("stepik_id")
+    # UNIQUE constraint on `course.stepik_id` means only one local course can
+    # claim a given Stepik course id at a time. If another row is already
+    # holding this id, transfer ownership: null out the previous one so the
+    # current import can succeed. This lets the user re-import the same Stepik
+    # course into a fresh local "course" entry without manually deleting the
+    # previous one.
+    if new_stepik_id is not None:
+        prior = db.execute(
+            select(Course).where(
+                Course.stepik_id == new_stepik_id, Course.id != course.id
+            )
+        ).scalars().all()
+        for p in prior:
+            p.stepik_id = None
+        if prior:
+            db.flush()
+    course.stepik_id = new_stepik_id
 
     # Compute up-front total so the frontend can show X of N progress.
     steps_total = sum(
