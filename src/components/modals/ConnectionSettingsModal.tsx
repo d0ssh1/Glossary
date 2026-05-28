@@ -70,17 +70,31 @@ export default function ConnectionSettingsModal() {
     dispatch({ type: 'CLOSE_MODAL' });
     dispatch({ type: 'OPEN_MODAL', modal: 'sync-process' });
     dispatch({ type: 'SET_SYNC_PROGRESS', progress: 1, status: 'Запуск импорта...' });
+    // Fetching the course tree from Stepik is one slow blocking call on the
+    // backend — during it `steps_total` stays 0, so we crawl through phased
+    // textual stages keyed on elapsed time. As soon as the backend reports a
+    // real `steps_total`, the per-step counter takes over.
+    const startedAt = Date.now();
+    const phaseLabel = (sec: number) => {
+      if (sec < 3) return 'Подключаемся к Stepik...';
+      if (sec < 8) return 'Получаем структуру курса...';
+      if (sec < 16) return 'Загружаем шаги (этап подготовки)...';
+      return 'Парсим контент шагов...';
+    };
     try {
       const finalStatus = await apiImportCourse(state.activeCourseId, body, (s: ImportStatus) => {
         const done = s.steps_done ?? s.steps_count ?? 0;
         const total = s.steps_total ?? 0;
-        const pct = total > 0
-          ? Math.min(99, Math.round((done / total) * 100))
-          : Math.min(95, 5 + s.sections_count * 5 + s.lessons_count);
-        const label = total > 0
-          ? `Шаги: ${done} / ${total}`
-          : `Структура: ${s.sections_count} секций, ${s.lessons_count} уроков...`;
-        dispatch({ type: 'SET_SYNC_PROGRESS', progress: pct, status: label });
+        const elapsed = (Date.now() - startedAt) / 1000;
+        if (total > 0) {
+          // Real progress is available — step-counter dominates.
+          const pct = Math.min(99, Math.round((done / total) * 100));
+          dispatch({ type: 'SET_SYNC_PROGRESS', progress: Math.max(10, pct), status: `Шаги: ${done} / ${total}` });
+        } else {
+          // Pre-tree-known phase: pseudo-progress that crawls but never stalls.
+          const pseudo = Math.min(15 + elapsed * 2, 60);
+          dispatch({ type: 'SET_SYNC_PROGRESS', progress: pseudo, status: phaseLabel(elapsed) });
+        }
       });
       if (finalStatus.status === 'error') {
         throw new Error(finalStatus.error || 'Импорт завершился ошибкой');

@@ -510,7 +510,9 @@ export function useApi() {
     // so the modal can't hang forever if the backend disappears.
     const deadline = Date.now() + 10 * 60 * 1000;
     while (Date.now() < deadline) {
-      await new Promise(r => setTimeout(r, 1500));
+      // 700 ms keeps the progress label visibly moving without spamming the
+      // backend; the average Stepik import is <30s, so 40+ polls is plenty.
+      await new Promise(r => setTimeout(r, 700));
       const st = await apiGetImportStatus(numId);
       onProgress?.(st);
       if (st.status === 'done' || st.status === 'error') {

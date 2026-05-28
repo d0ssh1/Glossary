@@ -38,32 +38,8 @@ export default function D3Graph() {
     svg.selectAll('*').remove();
     svg.attr('width', width).attr('height', height);
 
-    // Define arrow markers
-    const defs = svg.append('defs');
-    defs.append('marker')
-      .attr('id', 'arrow-first')
-      .attr('viewBox', '0 -5 10 10')
-      .attr('refX', 28)
-      .attr('refY', 0)
-      .attr('markerWidth', 6)
-      .attr('markerHeight', 6)
-      .attr('orient', 'auto')
-      .append('path')
-      .attr('d', 'M0,-5L10,0L0,5')
-      .attr('fill', linkHex['first-appearance']);
-
-    defs.append('marker')
-      .attr('id', 'arrow-mention')
-      .attr('viewBox', '0 -5 10 10')
-      .attr('refX', 28)
-      .attr('refY', 0)
-      .attr('markerWidth', 6)
-      .attr('markerHeight', 6)
-      .attr('orient', 'auto')
-      .append('path')
-      .attr('d', 'M0,-5L10,0L0,5')
-      .attr('fill', linkHex.mention);
-
+    // No arrowheads — per spec edges are plain palki (lines), the colour /
+    // thickness encodes everything we need.
     const g = svg.append('g');
 
     // Zoom behavior
@@ -101,7 +77,14 @@ export default function D3Graph() {
       .force('center', d3.forceCenter(width / 2, height / 2))
       .force('collide', d3.forceCollide<GraphNode>().radius(d => d.type === 'term' ? 25 : 40));
 
-    // Draw links
+    // Edge styling — palka thickness scales with weight, with a per-level floor
+    // so terms-level edges never get lost under the surrounding nodes.
+    const edgeWidth = (d: GraphLink): number => {
+      const floor = graphLevel === 'terms' ? 2.5 : 2;
+      return Math.max(floor, 1 + (d.weight || 1) * 0.6);
+    };
+
+    // Draw links (no arrowheads — per spec the edges are plain palki).
     const link = g.append('g')
       .attr('class', 'links')
       .selectAll('line')
@@ -109,9 +92,8 @@ export default function D3Graph() {
       .enter()
       .append('line')
       .attr('stroke', (d: GraphLink) => linkHex[d.type])
-      .attr('stroke-width', (d: GraphLink) => 1 + (d.weight || 1) * 0.5)
-      .attr('stroke-opacity', 0.7)
-      .attr('marker-end', (d: GraphLink) => d.type === 'first-appearance' ? 'url(#arrow-first)' : 'url(#arrow-mention)');
+      .attr('stroke-width', edgeWidth)
+      .attr('stroke-opacity', 0.85);
 
     // Draw nodes
     const nodeGroup = g.append('g')
@@ -134,13 +116,13 @@ export default function D3Graph() {
           .attr('stroke', color)
           .attr('stroke-width', 2.5)
           .attr('filter', 'drop-shadow(0 1px 2px rgba(0,0,0,0.08))');
-      } else if (graphLevel === 'terms' && d.id === 'center-m1l1') {
-        // Center node for terms view
+      } else if (graphLevel === 'terms' && d.id.startsWith('center-')) {
+        // Center node for terms view — the lesson hub.
         el.append('rect')
-          .attr('width', 140)
-          .attr('height', 44)
-          .attr('x', -70)
-          .attr('y', -22)
+          .attr('width', 180)
+          .attr('height', 48)
+          .attr('x', -90)
+          .attr('y', -24)
           .attr('rx', 6)
           .attr('fill', '#F6F5F2')
           .attr('stroke', '#D4A056')
@@ -148,16 +130,19 @@ export default function D3Graph() {
           .attr('filter', 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))');
       } else {
         el.append('rect')
-          .attr('width', 140)
-          .attr('height', 50)
-          .attr('x', -70)
-          .attr('y', -25)
+          .attr('width', 180)
+          .attr('height', 54)
+          .attr('x', -90)
+          .attr('y', -27)
           .attr('rx', 6)
           .attr('fill', '#FFFFFF')
           .attr('stroke', d.id === activeNodeId ? '#D4A056' : '#E0DFDA')
           .attr('stroke-width', d.id === activeNodeId ? 2.5 : 1.5)
           .attr('filter', 'drop-shadow(0 1px 3px rgba(0,0,0,0.06))');
       }
+      // Native SVG tooltip with the full name — guarantees the user can
+      // always see what the truncated label says.
+      el.append('title').text(d.name);
     });
 
     // Node labels
@@ -172,34 +157,43 @@ export default function D3Graph() {
       .style('user-select', 'none')
       .each(function (d: GraphNode) {
         const text = d3.select(this);
-        // Wrap by '\n' if present, else by words to fit ~18 chars per line
+        // Capitalize the first letter for term nodes — spec shows them sentence-cased
+        // regardless of how the user typed them in the bulk-add textarea.
+        const display = d.type === 'term' && d.name.length > 0
+          ? d.name[0].toUpperCase() + d.name.slice(1)
+          : d.name;
+        // Wrap to fit the ~26-char per-line budget of the wider 180px box.
+        // Two lines max; if it still overflows we ellipsize the second line.
+        const MAX_CHARS = 26;
         let lines: string[];
-        if (d.name.includes('\n')) {
-          lines = d.name.split('\n');
-        } else if (d.type === 'term' || d.name.length <= 22) {
-          lines = [d.name.length > 18 ? d.name.slice(0, 16) + '…' : d.name];
+        if (display.includes('\n')) {
+          lines = display.split('\n');
+        } else if (display.length <= MAX_CHARS) {
+          lines = [display];
         } else {
-          const words = d.name.split(' ');
+          const words = display.split(/\s+/);
           const out: string[] = [];
           let cur = '';
           for (const w of words) {
-            if ((cur + ' ' + w).trim().length > 22) {
+            const next = (cur ? cur + ' ' : '') + w;
+            if (next.length > MAX_CHARS) {
               if (cur) out.push(cur);
               cur = w;
             } else {
-              cur = (cur + ' ' + w).trim();
+              cur = next;
             }
-            if (out.length === 1) break;
           }
           if (cur) out.push(cur);
           lines = out.slice(0, 2);
-          if (out.length > 2) lines[1] = lines[1].slice(0, 18) + '…';
+          if (out.length > 2 || (lines[1] && lines[1].length > MAX_CHARS)) {
+            lines[1] = lines[1].slice(0, MAX_CHARS - 1) + '…';
+          }
         }
         text.text('');
         lines.forEach((word, i) => {
           text.append('tspan')
             .attr('x', 0)
-            .attr('dy', i === 0 ? (lines.length > 1 ? '-0.3em' : '0.35em') : '1.2em')
+            .attr('dy', i === 0 ? (lines.length > 1 ? '-0.45em' : '0.35em') : '1.2em')
             .text(word);
         });
       });
@@ -285,11 +279,11 @@ export default function D3Graph() {
       })
       .on('mouseleave', function () {
         nodeGroup.style('opacity', 1);
-        link.style('opacity', 0.7)
+        link.style('opacity', 0.85)
           .attr('stroke', (d: GraphLink) => activeLinkId && d.id === activeLinkId ? '#D4A056' : linkHex[d.type])
           .attr('stroke-width', (d: GraphLink) => activeLinkId && d.id === activeLinkId
             ? 2 + (d.weight || 1)
-            : 1 + (d.weight || 1) * 0.5);
+            : edgeWidth(d));
       })
       .on('click', function (_event: unknown, d: GraphNode) {
         const now = Date.now();
@@ -341,7 +335,7 @@ export default function D3Graph() {
           .attr('stroke', (d: GraphLink) => activeLinkId && d.id === activeLinkId ? '#D4A056' : linkHex[d.type])
           .attr('stroke-width', (d: GraphLink) => activeLinkId && d.id === activeLinkId
             ? 2 + (d.weight || 1)
-            : 1 + (d.weight || 1) * 0.5);
+            : edgeWidth(d));
         nodeGroup.style('opacity', 1);
       });
 
