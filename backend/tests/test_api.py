@@ -147,8 +147,12 @@ def test_binding_duplicate_409(client: TestClient) -> None:
             "is_created_by_user": True,
         },
     )
-    assert r1.status_code == 201, r1.text
+    assert r1.status_code == 200, r1.text
+    first_id = r1.json()["id"]
 
+    # POST is idempotent on (term_id, step_id): a duplicate returns the same
+    # binding with 200, not 409. This matches the LinkEditor "save my checks"
+    # UX which doesn't track whether the binding already exists.
     r2 = client.post(
         "/bindings/",
         json={
@@ -158,4 +162,5 @@ def test_binding_duplicate_409(client: TestClient) -> None:
             "is_created_by_user": True,
         },
     )
-    assert r2.status_code == 409
+    assert r2.status_code == 200
+    assert r2.json()["id"] == first_id

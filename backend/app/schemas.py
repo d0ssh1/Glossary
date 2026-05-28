@@ -167,6 +167,12 @@ class ImportRequest(BaseModel):
     filename: Optional[str] = None
     # For "stepik": ID of the course on stepik.org.
     stepik_course_id: Optional[int] = None
+    # Optional per-request override of OAuth credentials. When either is set,
+    # it takes precedence over `settings.stepik_client_id` / `..._secret` for
+    # this import only — the token cache is also bypassed so the right keys
+    # are used. Both fields are stripped before reaching logs.
+    client_id: Optional[str] = None
+    client_secret: Optional[str] = None
 
 
 class ImportReport(BaseModel):

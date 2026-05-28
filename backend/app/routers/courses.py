@@ -134,11 +134,20 @@ def _set_status(course_id: int, status_value: str, error: str | None = None) -> 
         db.close()
 
 
-def _bg_import_stepik(course_id: int, stepik_course_id: int) -> None:
+def _bg_import_stepik(
+    course_id: int,
+    stepik_course_id: int,
+    client_id: str | None = None,
+    client_secret: str | None = None,
+) -> None:
     _set_status(course_id, "running")
     db = _db_module.SessionLocal()
     try:
-        import_course_from_stepik(db, course_id, stepik_course_id)
+        # Defer import to avoid a circular dep at module load time.
+        from app.services.stepik import with_creds  # noqa: PLC0415
+
+        with with_creds(client_id, client_secret):
+            import_course_from_stepik(db, course_id, stepik_course_id)
         _set_status(course_id, "done")
     except Exception as exc:  # noqa: BLE001 - we want to capture any failure
         _set_status(course_id, "error", str(exc))
@@ -180,9 +189,12 @@ def import_course(
                 status_code=422, detail="stepik_course_id is required for source='stepik'"
             )
         # Surface configuration errors synchronously so the client gets 503 instead of "error" later.
-        from app.services.stepik import _require_creds  # type: ignore[attr-defined]  # noqa: PLC0415
+        # Validate against the per-request overrides so the UI's "Client ID" /
+        # "Client Secret" fields are checked here rather than .env only.
+        from app.services.stepik import _require_creds, with_creds  # type: ignore[attr-defined]  # noqa: PLC0415
         try:
-            _require_creds()
+            with with_creds(payload.client_id, payload.client_secret):
+                _require_creds()
         except StepikNotConfigured as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except StepikApiError as exc:
@@ -192,7 +204,13 @@ def import_course(
         course.import_steps_total = 0
         course.import_steps_done = 0
         db.commit()
-        background_tasks.add_task(_bg_import_stepik, course_id, payload.stepik_course_id)
+        background_tasks.add_task(
+            _bg_import_stepik,
+            course_id,
+            payload.stepik_course_id,
+            payload.client_id,
+            payload.client_secret,
+        )
         return ImportAccepted(
             course_id=course_id, status="running", message="Stepik import scheduled"
         )

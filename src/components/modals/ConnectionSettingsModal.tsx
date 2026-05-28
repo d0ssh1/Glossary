@@ -36,11 +36,28 @@ function runSyncSimulation(
   }, tickMs);
 }
 
+/** Persist the last-used OAuth keys in localStorage so the user doesn't have
+ *  to retype them across imports. Stored only on the user's own machine. */
+const LS_KEY = 'lw.stepik.creds';
+function loadCreds(): { clientId: string; clientSecret: string } {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return { clientId: '', clientSecret: '' };
+    return JSON.parse(raw);
+  } catch { return { clientId: '', clientSecret: '' }; }
+}
+function saveCreds(c: { clientId: string; clientSecret: string }) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(c)); } catch { /* quota etc — ignore */ }
+}
+
 export default function ConnectionSettingsModal() {
   const { state, dispatch } = useApp();
   const { apiImportCourse } = useApi();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const initialCreds = loadCreds();
+  const [clientId, setClientId] = useState(initialCreds.clientId);
+  const [clientSecret, setClientSecret] = useState(initialCreds.clientSecret);
 
   const course = state.courses.find(c => c.id === state.activeCourseId);
   const stepikId = course ? parseStepikCourseId(course.url) : null;
@@ -108,7 +125,13 @@ export default function ConnectionSettingsModal() {
         setError('В URL курса не найден Stepik ID (ожидается ".../course/<id>/...")');
         return;
       }
-      void runLiveImport({ source: 'stepik', stepik_course_id: stepikId });
+      saveCreds({ clientId, clientSecret });
+      void runLiveImport({
+        source: 'stepik',
+        stepik_course_id: stepikId,
+        ...(clientId.trim() ? { client_id: clientId.trim() } : {}),
+        ...(clientSecret.trim() ? { client_secret: clientSecret.trim() } : {}),
+      });
       return;
     }
     // Mock fallback
@@ -143,13 +166,39 @@ export default function ConnectionSettingsModal() {
       <h3 className="mb-5 text-lg font-semibold" style={{ color: 'var(--lw-text-primary)' }}>Настройка подключения</h3>
       <div className="space-y-4">
         {live ? (
-          <div className="rounded border p-3 text-xs leading-relaxed"
-            style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)', color: 'var(--lw-text-secondary)' }}>
-            <p>API-режим включён. Ключи Stepik берутся из <code>backend/.env</code>.</p>
-            {stepikId
-              ? <p className="mt-1">Будет импортирован курс Stepik <strong>#{stepikId}</strong>.</p>
-              : <p className="mt-1" style={{ color: 'var(--lw-warning)' }}>В URL курса нет Stepik ID — доступен только JSON-импорт.</p>}
-          </div>
+          <>
+            <div className="rounded border p-3 text-xs leading-relaxed"
+              style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)', color: 'var(--lw-text-secondary)' }}>
+              {stepikId
+                ? <p>Будет импортирован курс Stepik <strong>#{stepikId}</strong>. Если ключи ниже пусты, используются значения из <code>backend/.env</code>.</p>
+                : <p style={{ color: 'var(--lw-warning)' }}>В URL курса нет Stepik ID — доступен только JSON-импорт.</p>}
+            </div>
+
+            <div className="space-y-2">
+              <label className="block">
+                <span className="block text-xs font-medium" style={{ color: 'var(--lw-text-secondary)' }}>Client ID</span>
+                <input
+                  type="text"
+                  value={clientId}
+                  onChange={e => setClientId(e.target.value)}
+                  placeholder="напр. 51a37dfc8d2c4ed4..."
+                  className="mt-1 w-full rounded border px-2.5 py-1.5 text-xs outline-none"
+                  style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)', color: 'var(--lw-text-primary)' }}
+                />
+              </label>
+              <label className="block">
+                <span className="block text-xs font-medium" style={{ color: 'var(--lw-text-secondary)' }}>Client Secret</span>
+                <input
+                  type="password"
+                  value={clientSecret}
+                  onChange={e => setClientSecret(e.target.value)}
+                  placeholder="••••••••"
+                  className="mt-1 w-full rounded border px-2.5 py-1.5 text-xs outline-none"
+                  style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)', color: 'var(--lw-text-primary)' }}
+                />
+              </label>
+            </div>
+          </>
         ) : (
           <p className="text-xs italic" style={{ color: 'var(--lw-text-muted)' }}>
             Демо-режим: используются моковые данные. Чтобы импортировать реальный курс, поднимите бэкенд

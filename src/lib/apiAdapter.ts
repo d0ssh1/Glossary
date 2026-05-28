@@ -5,7 +5,7 @@ import type {
   ApiCourseFull, ApiGlossaryFull, ApiTerm, ApiOccurrence, ApiBinding,
 } from './apiTypes';
 import type {
-  Course, Module, Lesson, Step, Glossary, Term, Occurrence, TermStatus,
+  Course, Module, Lesson, Step, Glossary, Term, Occurrence, TermStatus, Connection,
 } from '@/types';
 
 export type IdPrefix = 'c' | 'm' | 's' | 'l' | 'st' | 'g' | 't' | 'b' | 'o';
@@ -29,7 +29,28 @@ function deriveStatus(term: ApiTerm): TermStatus {
   return 'no-trait';
 }
 
-export function mapTerm(api: ApiTerm, moduleId: string, lessonId: string): Term {
+export function mapTerm(
+  api: ApiTerm,
+  moduleId: string,
+  lessonId: string,
+  stepLocations: Map<number, StepLocation & { stepName: string; moduleName: string; lessonName: string }> = new Map(),
+): Term {
+  // Materialise backend bindings into the frontend Connection[] shape so the
+  // LinkEditor knows which step IDs are currently bound and can compute a
+  // proper diff on save.
+  const connections: Connection[] = api.bindings.map(b => {
+    const loc = stepLocations.get(b.step_id);
+    return {
+      id: numericToId('b', b.id),
+      moduleId: loc?.moduleId ?? '',
+      moduleName: loc?.moduleName ?? '',
+      lessonId: loc?.lessonId ?? '',
+      lessonName: loc?.lessonName ?? '',
+      stepId: numericToId('st', b.step_id),
+      stepName: loc?.stepName ?? '',
+      type: b.is_created_by_user ? 'editor' : 'system',
+    };
+  });
   return {
     id: numericToId('t', api.id),
     name: api.name,
@@ -38,7 +59,7 @@ export function mapTerm(api: ApiTerm, moduleId: string, lessonId: string): Term 
     moduleId,
     lessonId,
     occurrences: [],
-    connections: [],
+    connections,
   };
 }
 
@@ -56,14 +77,25 @@ export function mapOccurrences(arr: ApiOccurrence[]): Occurrence[] {
 
 interface StepLocation { moduleId: string; lessonId: string; }
 
-function indexSteps(course: ApiCourseFull): Map<number, StepLocation> {
-  const map = new Map<number, StepLocation>();
+interface StepLocationFull extends StepLocation {
+  moduleName: string;
+  lessonName: string;
+  stepName: string;
+}
+
+function indexSteps(course: ApiCourseFull): Map<number, StepLocationFull> {
+  const map = new Map<number, StepLocationFull>();
   for (const section of course.sections) {
     const moduleId = numericToId('m', section.id);
     for (const lesson of section.lessons) {
       const lessonId = numericToId('l', lesson.id);
       for (const step of lesson.steps) {
-        map.set(step.id, { moduleId, lessonId });
+        map.set(step.id, {
+          moduleId, lessonId,
+          moduleName: section.title,
+          lessonName: lesson.title,
+          stepName: step.name,
+        });
       }
     }
   }
@@ -97,7 +129,7 @@ export function mapCourseFull(api: ApiCourseFull, glossaries: ApiGlossaryFull[])
       // Pick first binding's step location for moduleId/lessonId, else ''.
       const primary: ApiBinding | undefined = t.bindings.find(b => b.is_primary) || t.bindings[0];
       const loc = primary ? stepIndex.get(primary.step_id) : undefined;
-      return mapTerm(t, loc?.moduleId ?? '', loc?.lessonId ?? '');
+      return mapTerm(t, loc?.moduleId ?? '', loc?.lessonId ?? '', stepIndex);
     });
     return {
       id: numericToId('g', g.id),

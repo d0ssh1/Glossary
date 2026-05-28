@@ -13,9 +13,14 @@ from app.schemas import BindingCreate, BindingRead, BindingUpdate
 router = APIRouter(prefix="/bindings", tags=["bindings"])
 
 
-@router.post("/", response_model=BindingRead, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=BindingRead)
 def create_binding(payload: BindingCreate, db: Session = Depends(get_db)) -> TermStepBinding:
-    """Create a new binding. Returns 409 if the (term, step) pair already exists."""
+    """Create or fetch a (term, step) binding.
+
+    Idempotent: if the pair already exists, return it with HTTP 200 instead of
+    erroring out — this matches how the LinkEditor on the client wants to "save
+    a checked state", regardless of whether the backend already had it.
+    """
     if db.get(Term, payload.term_id) is None:
         raise HTTPException(status_code=404, detail="Term not found")
     if db.get(Step, payload.step_id) is None:
@@ -28,7 +33,7 @@ def create_binding(payload: BindingCreate, db: Session = Depends(get_db)) -> Ter
         )
     ).scalar_one_or_none()
     if existing is not None:
-        raise HTTPException(status_code=409, detail="Binding already exists")
+        return existing
 
     binding = TermStepBinding(
         term_id=payload.term_id,
@@ -40,8 +45,15 @@ def create_binding(payload: BindingCreate, db: Session = Depends(get_db)) -> Ter
     try:
         db.commit()
     except IntegrityError:
+        # Lost a race with a concurrent create — fetch and return the winner.
         db.rollback()
-        raise HTTPException(status_code=409, detail="Binding already exists")
+        binding = db.execute(
+            select(TermStepBinding).where(
+                TermStepBinding.term_id == payload.term_id,
+                TermStepBinding.step_id == payload.step_id,
+            )
+        ).scalar_one()
+        return binding
     db.refresh(binding)
     return binding
 

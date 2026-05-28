@@ -14,6 +14,9 @@ export default function TermSelectedState({ term }: Props) {
   const [nameValue, setNameValue] = useState(term.name);
   const [definition, setDefinition] = useState(term.definition);
   const [showLinkEditor, setShowLinkEditor] = useState(false);
+  // Independent of the editor: lets the user collapse/expand the read-only
+  // connections list by clicking the "связи:" label/chevron.
+  const [connectionsCollapsed, setConnectionsCollapsed] = useState(false);
 
   const handleSave = async () => {
     await apiUpdateTerm(term.id, { definition, name: nameValue });
@@ -107,26 +110,30 @@ export default function TermSelectedState({ term }: Props) {
         <div>
           <div className="mb-2 flex items-center justify-between">
             <button
-              onClick={() => setShowLinkEditor(!showLinkEditor)}
+              onClick={() => setConnectionsCollapsed(v => !v)}
               className="flex items-center gap-1 text-xs font-medium"
               style={{ color: 'var(--lw-text-secondary)' }}
+              title={connectionsCollapsed ? 'Раскрыть список связей' : 'Свернуть список связей'}
             >
-              {showLinkEditor ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              {connectionsCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
               связи:
             </button>
             <button
-              onClick={() => setShowLinkEditor(!showLinkEditor)}
+              onClick={() => setShowLinkEditor(v => !v)}
               className="rounded p-1 transition-colors duration-200"
-              style={{ color: 'var(--lw-text-muted)' }}
-              title="Редактировать связи"
+              style={{ color: showLinkEditor ? 'var(--lw-accent-amber)' : 'var(--lw-text-muted)' }}
+              title={showLinkEditor ? 'Закрыть редактор связей' : 'Редактировать связи'}
               onMouseEnter={e => { e.currentTarget.style.color = 'var(--lw-accent-amber)'; }}
-              onMouseLeave={e => { e.currentTarget.style.color = 'var(--lw-text-muted)'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = showLinkEditor ? 'var(--lw-accent-amber)' : 'var(--lw-text-muted)'; }}
             >
               <Pencil size={12} />
             </button>
           </div>
 
-          {!showLinkEditor ? (
+          {showLinkEditor && (
+            <LinkEditor term={term} onClose={() => setShowLinkEditor(false)} />
+          )}
+          {!showLinkEditor && !connectionsCollapsed && (
             <div className="space-y-1">
               {term.connections.map(conn => (
                 <div key={conn.id} className="rounded px-2 py-1.5 text-xs" style={{ backgroundColor: 'var(--lw-bg-primary)' }}>
@@ -149,8 +156,6 @@ export default function TermSelectedState({ term }: Props) {
                 <p className="py-1 text-xs italic" style={{ color: 'var(--lw-text-muted)' }}>Нет связей</p>
               )}
             </div>
-          ) : (
-            <LinkEditor term={term} onClose={() => setShowLinkEditor(false)} />
           )}
         </div>
       </div>

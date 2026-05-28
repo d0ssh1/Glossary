@@ -7,7 +7,11 @@ import type { Term } from '@/types';
 export default function NodeSelectedState() {
   const { state, dispatch } = useApp();
   const { apiSetFtsIndexed } = useApi();
-  const { activeNodeId, graphLevel, courses, activeGlossaryId, activeCourseId } = state;
+  const { activeNodeId, graphLevel, courses, activeGlossaryId, activeCourseId, breadcrumbs } = state;
+  // On the terms-level the "selected node" is actually the lesson hub —
+  // derived from the breadcrumb that initiated this drill-down. Used to scope
+  // both the title/FTS toggle and the term list.
+  const lessonDrillId = breadcrumbs.find(b => b.level === 'terms')?.id ?? null;
   const [nodeSearch, setNodeSearch] = useState('');
   const [allExpanded, setAllExpanded] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -19,30 +23,39 @@ export default function NodeSelectedState() {
   // Resolve the selected node — title and current FTS-indexed flag (the FTS
   // toggle isn't shown on terms-level since terms don't carry the flag).
   const nodeInfo = useMemo(() => {
-    if (!activeCourse || !activeNodeId) return null;
-    if (graphLevel === 'modules') {
+    if (!activeCourse) return null;
+    if (graphLevel === 'modules' && activeNodeId) {
       const m = activeCourse.modules.find(x => x.id === activeNodeId);
       return m ? { name: m.name, type: 'module' as const, indexed: m.isIndexed ?? true } : null;
     }
-    if (graphLevel === 'lessons') {
+    if (graphLevel === 'lessons' && activeNodeId) {
       for (const m of activeCourse.modules) {
         const l = m.lessons.find(x => x.id === activeNodeId);
         if (l) return { name: l.name, type: 'lesson' as const, indexed: l.isIndexed ?? true };
       }
     }
-    // terms level: activeNodeId points at a term — handled by TermSelectedState, not here.
+    // terms-level: scope to the drilled lesson (kept in breadcrumbs, not activeNodeId
+    // because activeNodeId on terms-level holds the *term* selection state).
+    if (graphLevel === 'terms' && lessonDrillId) {
+      for (const m of activeCourse.modules) {
+        const l = m.lessons.find(x => x.id === lessonDrillId);
+        if (l) return { name: l.name, type: 'lesson' as const, indexed: l.isIndexed ?? true };
+      }
+    }
     return null;
-  }, [activeCourse, activeNodeId, graphLevel]);
+  }, [activeCourse, activeNodeId, graphLevel, lessonDrillId]);
 
   const nodeTerms = useMemo(() => {
     return terms
       .filter(t => {
         if (graphLevel === 'modules') return t.moduleId === activeNodeId;
         if (graphLevel === 'lessons') return t.lessonId === activeNodeId;
+        // terms-level: list terms of the drilled lesson, not the whole glossary.
+        if (graphLevel === 'terms' && lessonDrillId) return t.lessonId === lessonDrillId;
         return true;
       })
       .filter(t => !nodeSearch.trim() || t.name.toLowerCase().includes(nodeSearch.toLowerCase()));
-  }, [terms, graphLevel, activeNodeId, nodeSearch]);
+  }, [terms, graphLevel, activeNodeId, lessonDrillId, nodeSearch]);
 
   const grouped = useMemo(() => {
     const g: Record<string, Term[]> = {};

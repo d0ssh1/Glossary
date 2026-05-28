@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 import httpx
 from sqlalchemy.orm import Session
@@ -35,19 +35,34 @@ class StepikApiError(RuntimeError):
 
 _TOKEN_CACHE: dict[str, Any] = {"access_token": None, "expires_at": 0.0}
 
+# Per-call override of OAuth creds. When the caller passes client_id/secret in
+# the request body, ``with_creds`` installs them here for the duration of one
+# import and ``get_access_token`` bypasses the in-memory cache.
+_CREDS_OVERRIDE: dict[str, Optional[str]] = {"id": None, "secret": None}
+
 
 def _require_creds() -> tuple[str, str]:
-    cid = settings.stepik_client_id.strip()
-    secret = settings.stepik_client_secret.strip()
+    cid = (_CREDS_OVERRIDE["id"] or settings.stepik_client_id).strip()
+    secret = (_CREDS_OVERRIDE["secret"] or settings.stepik_client_secret).strip()
     if not cid or not secret:
         raise StepikNotConfigured("Stepik client_id/secret are not configured.")
     return cid, secret
 
 
 def get_access_token(force_refresh: bool = False) -> str:
-    """Return a cached bearer token, refreshing it if expired."""
+    """Return a cached bearer token, refreshing it if expired.
+
+    The token cache is *skipped* when an override is active so the per-request
+    keys are actually used — otherwise we'd serve a token minted with .env keys.
+    """
+    override_active = bool(_CREDS_OVERRIDE["id"] or _CREDS_OVERRIDE["secret"])
     now = time.time()
-    if not force_refresh and _TOKEN_CACHE["access_token"] and _TOKEN_CACHE["expires_at"] > now + 30:
+    if (
+        not override_active
+        and not force_refresh
+        and _TOKEN_CACHE["access_token"]
+        and _TOKEN_CACHE["expires_at"] > now + 30
+    ):
         return _TOKEN_CACHE["access_token"]
 
     cid, secret = _require_creds()
@@ -60,9 +75,36 @@ def get_access_token(force_refresh: bool = False) -> str:
     if resp.status_code != 200:
         raise StepikApiError(f"Stepik OAuth failed: {resp.status_code} {resp.text}")
     payload = resp.json()
+    if override_active:
+        # Don't poison the cache used by subsequent .env-based requests.
+        return payload["access_token"]
     _TOKEN_CACHE["access_token"] = payload["access_token"]
     _TOKEN_CACHE["expires_at"] = now + int(payload.get("expires_in", 3600))
     return _TOKEN_CACHE["access_token"]
+
+
+class with_creds:
+    """Context manager: temporarily install per-request OAuth credentials.
+
+    Empty/None values fall through to ``settings``. Restored on exit so the
+    background-task worker doesn't leak creds across imports.
+    """
+
+    def __init__(self, client_id: Optional[str], client_secret: Optional[str]) -> None:
+        self._cid = (client_id or "").strip() or None
+        self._secret = (client_secret or "").strip() or None
+        self._prev: tuple[Optional[str], Optional[str]] = (None, None)
+
+    def __enter__(self) -> "with_creds":
+        self._prev = (_CREDS_OVERRIDE["id"], _CREDS_OVERRIDE["secret"])
+        if self._cid:
+            _CREDS_OVERRIDE["id"] = self._cid
+        if self._secret:
+            _CREDS_OVERRIDE["secret"] = self._secret
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        _CREDS_OVERRIDE["id"], _CREDS_OVERRIDE["secret"] = self._prev
 
 
 def _auth_headers() -> dict[str, str]:
