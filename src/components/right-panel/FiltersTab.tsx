@@ -1,54 +1,72 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { useApp } from '@/store/AppContext';
-import type { FrequencyMode, LogicMode } from '@/store/AppContext';
+import { useApp, defaultGraphFilters } from '@/store/AppContext';
+import type { FrequencyMode, LogicMode, GraphFilters } from '@/store/AppContext';
 import HierarchicalFilter from './HierarchicalFilter';
 
+/**
+ * Filters tab — Anton's spec:
+ *  1. Hierarchical filter on top (pick which modules/lessons participate).
+ *  2. Frequency radio (all / first-appearance / mention).
+ *  3. Logic radio (or / and / not / xor).
+ *  4. Weight range.
+ *  5. "Применить" + "Сбросить" buttons — changes are held as a *pending draft*
+ *     and only commit to AppState on Apply, so the graph doesn't thrash while
+ *     the user is still configuring.
+ *  6. Legend.
+ *
+ * The hierarchical filter is the exception — it commits live because that's
+ * the existing UX (and the term list in the left panel needs to react
+ * immediately for its "select-all from this module" workflow).
+ */
 export default function FiltersTab() {
   const { state, dispatch } = useApp();
-  const f = state.graphFilters;
+
+  // Draft — what the user has staged but not applied yet.
+  const [draft, setDraft] = useState<GraphFilters>(state.graphFilters);
+  useEffect(() => { setDraft(state.graphFilters); }, [state.graphFilters]);
 
   const [freqExpanded, setFreqExpanded] = useState(true);
   const [logicExpanded, setLogicExpanded] = useState(true);
-  const [hierExpanded, setHierExpanded] = useState(false);
-  const [legendExpanded, setLegendExpanded] = useState(true);
+  const [hierExpanded, setHierExpanded] = useState(true);
+  const [legendExpanded, setLegendExpanded] = useState(false);
 
-  const set = (patch: Partial<typeof f>) =>
-    dispatch({ type: 'SET_GRAPH_FILTERS', filters: patch });
+  const patch = (p: Partial<GraphFilters>) => setDraft(d => ({ ...d, ...p }));
+
+  const dirty =
+    draft.weightEnabled !== state.graphFilters.weightEnabled ||
+    draft.weightFrom !== state.graphFilters.weightFrom ||
+    draft.weightTo !== state.graphFilters.weightTo ||
+    draft.frequency !== state.graphFilters.frequency ||
+    draft.logic !== state.graphFilters.logic;
+
+  const handleApply = () => {
+    dispatch({ type: 'SET_GRAPH_FILTERS', filters: draft });
+  };
+  const handleReset = () => {
+    setDraft(defaultGraphFilters);
+    dispatch({ type: 'SET_GRAPH_FILTERS', filters: defaultGraphFilters });
+    dispatch({ type: 'SET_HIER_FILTER', ids: null });
+  };
 
   return (
     <div className="px-4 py-4">
       <p className="mb-3 text-xs font-medium" style={{ color: 'var(--lw-text-secondary)' }}>Фильтры:</p>
 
-      {/* Weight */}
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <input
-          type="checkbox"
-          checked={f.weightEnabled}
-          onChange={e => set({ weightEnabled: e.target.checked })}
-          className="accent-[var(--lw-accent-graphite)]"
-        />
-        <span className="text-xs" style={{ color: 'var(--lw-text-secondary)' }}>вес связи от</span>
-        <input
-          type="number"
-          value={f.weightFrom}
-          onChange={e => set({ weightFrom: Number(e.target.value) || 0 })}
-          disabled={!f.weightEnabled}
-          className="w-12 rounded border px-1.5 py-0.5 text-xs outline-none disabled:opacity-40"
-          style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)', color: 'var(--lw-text-primary)' }}
-        />
-        <span className="text-xs" style={{ color: 'var(--lw-text-muted)' }}>до</span>
-        <input
-          type="number"
-          value={f.weightTo}
-          onChange={e => set({ weightTo: Number(e.target.value) || 0 })}
-          disabled={!f.weightEnabled}
-          className="w-12 rounded border px-1.5 py-0.5 text-xs outline-none disabled:opacity-40"
-          style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)', color: 'var(--lw-text-primary)' }}
-        />
+      {/* 1. Hierarchical — commits live (drives left-panel term list immediately). */}
+      <div className="mb-3">
+        <button
+          onClick={() => setHierExpanded(!hierExpanded)}
+          className="flex w-full items-center gap-1 py-1 text-xs font-medium"
+          style={{ color: 'var(--lw-text-primary)' }}
+        >
+          {hierExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          Иерархия модулей и уроков
+        </button>
+        {hierExpanded && <HierarchicalFilter />}
       </div>
 
-      {/* Frequency */}
+      {/* 2. Frequency */}
       <FilterGroup label="частота термина" expanded={freqExpanded} onToggle={() => setFreqExpanded(!freqExpanded)}>
         {([
           ['all', 'все упоминания'],
@@ -59,8 +77,8 @@ export default function FiltersTab() {
             <input
               type="radio"
               name="freq"
-              checked={f.frequency === value}
-              onChange={() => set({ frequency: value })}
+              checked={draft.frequency === value}
+              onChange={() => patch({ frequency: value })}
               className="accent-[var(--lw-accent-graphite)]"
             />
             {label}
@@ -68,7 +86,7 @@ export default function FiltersTab() {
         ))}
       </FilterGroup>
 
-      {/* Logic */}
+      {/* 3. Logic */}
       <FilterGroup label="Логические функции" expanded={logicExpanded} onToggle={() => setLogicExpanded(!logicExpanded)}>
         <p className="mb-1 text-[10px] italic" style={{ color: 'var(--lw-text-muted)' }}>
           Действует только когда выделены термины (чекбоксами). Узел остаётся,
@@ -84,8 +102,8 @@ export default function FiltersTab() {
             <input
               type="radio"
               name="logic"
-              checked={f.logic === value}
-              onChange={() => set({ logic: value })}
+              checked={draft.logic === value}
+              onChange={() => patch({ logic: value })}
               className="accent-[var(--lw-accent-graphite)]"
             />
             {label}
@@ -93,20 +111,56 @@ export default function FiltersTab() {
         ))}
       </FilterGroup>
 
-      {/* Hierarchical */}
-      <div className="mb-2">
-        <button
-          onClick={() => setHierExpanded(!hierExpanded)}
-          className="flex w-full items-center gap-1 py-1 text-xs font-medium"
-          style={{ color: 'var(--lw-text-primary)' }}
-        >
-          {hierExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          Иерархический фильтр
-        </button>
-        {hierExpanded && <HierarchicalFilter />}
+      {/* 4. Weight range */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <input
+          type="checkbox"
+          checked={draft.weightEnabled}
+          onChange={e => patch({ weightEnabled: e.target.checked })}
+          className="accent-[var(--lw-accent-graphite)]"
+        />
+        <span className="text-xs" style={{ color: 'var(--lw-text-secondary)' }}>вес связи от</span>
+        <input
+          type="number"
+          value={draft.weightFrom}
+          onChange={e => patch({ weightFrom: Number(e.target.value) || 0 })}
+          disabled={!draft.weightEnabled}
+          className="w-12 rounded border px-1.5 py-0.5 text-xs outline-none disabled:opacity-40"
+          style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)', color: 'var(--lw-text-primary)' }}
+        />
+        <span className="text-xs" style={{ color: 'var(--lw-text-muted)' }}>до</span>
+        <input
+          type="number"
+          value={draft.weightTo}
+          onChange={e => patch({ weightTo: Number(e.target.value) || 0 })}
+          disabled={!draft.weightEnabled}
+          className="w-12 rounded border px-1.5 py-0.5 text-xs outline-none disabled:opacity-40"
+          style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)', color: 'var(--lw-text-primary)' }}
+        />
       </div>
 
-      {/* Legend */}
+      {/* 5. Apply / Reset */}
+      <div className="mb-4 flex gap-2">
+        <button
+          onClick={handleApply}
+          disabled={!dirty}
+          className="flex-1 rounded py-2 text-xs font-medium transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40"
+          style={{ backgroundColor: 'var(--lw-accent-graphite)', color: 'var(--lw-bg-primary)' }}
+        >
+          Применить
+        </button>
+        <button
+          onClick={handleReset}
+          className="flex-1 rounded border py-2 text-xs font-medium transition-colors duration-200"
+          style={{ borderColor: 'var(--lw-border-primary)', color: 'var(--lw-text-secondary)' }}
+          onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--lw-bg-hover)'; }}
+          onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+        >
+          Сбросить
+        </button>
+      </div>
+
+      {/* 6. Legend */}
       <div className="mt-4">
         <button
           onClick={() => setLegendExpanded(!legendExpanded)}

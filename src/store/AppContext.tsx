@@ -15,8 +15,9 @@ import {
   importCourse as apiImportCourseRaw, downloadScorm as apiDownloadScormRaw,
   collectBindings as apiCollectBindingsRaw, getImportStatus as apiGetImportStatus,
   patchSection as apiPatchSection, patchLesson as apiPatchLesson,
+  getOccurrences as apiGetOccurrencesRaw,
 } from '@/lib/api';
-import { mapCourseFull, stringIdToNumeric, numericToId } from '@/lib/apiAdapter';
+import { mapCourseFull, stringIdToNumeric, numericToId, mapOccurrences } from '@/lib/apiAdapter';
 
 /** Filter set lifted out of FiltersTab so the graph renderer can react to it. */
 export type FrequencyMode = 'all' | 'first-appearance' | 'mention';
@@ -569,10 +570,26 @@ export function useApi() {
     }
   }, [dispatch, state.courses]);
 
+  /** Lazily fetch full occurrences (snippets + step locations) for a term and
+   *  splice them into local state. Called by the OccurrencesModal on open so we
+   *  don't pay the cost of fetching for every term up-front. */
+  const apiLoadOccurrences = useCallback(async (termId: string) => {
+    if (!apiEnabled()) return;
+    const gid = findGlossaryId(termId);
+    if (!gid) return;
+    try {
+      const raw = await apiGetOccurrencesRaw(stringIdToNumeric(gid), stringIdToNumeric(termId));
+      const occurrences = mapOccurrences(raw);
+      dispatch({ type: 'UPDATE_TERM', termId, updates: { occurrences } });
+    } catch (err) {
+      console.error('[useApi] loadOccurrences failed', err);
+    }
+  }, [dispatch, findGlossaryId]);
+
   return {
     apiCreateCourse, apiCreateGlossary,
     apiUpdateTerm, apiDeleteTerm, apiBulkAddTerms,
     apiImportCourse, apiDownloadScorm, apiCollectBindings, apiRefetchCourse,
-    apiSetFtsIndexed,
+    apiSetFtsIndexed, apiLoadOccurrences,
   };
 }

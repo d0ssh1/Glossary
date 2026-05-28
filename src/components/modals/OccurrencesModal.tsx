@@ -1,14 +1,26 @@
+import { useEffect, useState } from 'react';
 import { Copy, ExternalLink } from 'lucide-react';
-import { useApp } from '@/store/AppContext';
+import { useApp, useApi } from '@/store/AppContext';
 import { ModalClose } from './ModalShell';
 
 export default function OccurrencesModal() {
   const { state, dispatch } = useApp();
+  const { apiLoadOccurrences } = useApi();
   const termId = (state.modalData as { termId?: string }).termId;
   const term = state.courses
     .flatMap(c => c.glossaries)
     .flatMap(g => g.terms)
     .find(t => t.id === termId);
+
+  // Pull occurrences lazily — adapter only populates them on demand because
+  // they require an extra round-trip per term.
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!term) return;
+    if (term.occurrences.length > 0) return;
+    setLoading(true);
+    apiLoadOccurrences(term.id).finally(() => setLoading(false));
+  }, [term, apiLoadOccurrences]);
 
   if (!term) return null;
 
@@ -28,7 +40,10 @@ export default function OccurrencesModal() {
         </p>
       </div>
       <div className="lw-scrollbar max-h-[70vh] overflow-y-auto px-5 py-4">
-        {term.occurrences.length === 0 && (
+        {loading && term.occurrences.length === 0 && (
+          <p className="py-6 text-center text-xs italic" style={{ color: 'var(--lw-text-muted)' }}>Загружаем вхождения...</p>
+        )}
+        {!loading && term.occurrences.length === 0 && (
           <p className="py-6 text-center text-xs italic" style={{ color: 'var(--lw-text-muted)' }}>Нет вхождений</p>
         )}
         {term.occurrences.map(occ => (

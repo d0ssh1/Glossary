@@ -97,13 +97,16 @@ export default function TermSelectedState({ term }: Props) {
       <div className="flex-1 overflow-y-auto lw-scrollbar px-4 py-3">
         <button
           onClick={() => dispatch({ type: 'OPEN_MODAL', modal: 'occurrences', data: { termId: term.id } })}
-          disabled={term.occurrences.length === 0}
+          disabled={term.occurrences.length === 0 && term.connections.length === 0}
           className="mb-4 flex w-full items-center justify-between rounded border px-3 py-2 text-xs font-medium transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-40"
           style={{ borderColor: 'var(--lw-border-primary)', color: 'var(--lw-text-secondary)' }}
           onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = 'var(--lw-bg-hover)'; }}
           onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
         >
-          <span>найдено в курсе ({term.occurrences.length})</span>
+          {/* Use whichever is non-zero — `occurrences` is lazy-loaded so before
+              the modal is opened we fall back to the connection count, which
+              equals the number of bound steps. */}
+          <span>найдено в курсе ({Math.max(term.occurrences.length, term.connections.length)})</span>
           <ExternalLink size={11} />
         </button>
 
