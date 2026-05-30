@@ -143,7 +143,7 @@ export default function LinkSelectedState() {
           type="text"
           value={linkSearch}
           onChange={e => setLinkSearch(e.target.value)}
-          placeholder="поиск..."
+          placeholder="Поиск..."
           className="flex-1 bg-transparent text-xs outline-none"
           style={{ color: 'var(--lw-text-primary)' }}
         />

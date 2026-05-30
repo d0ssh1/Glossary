@@ -33,6 +33,13 @@ export default function TermSelectedState({ term }: Props) {
 
   const hasChanges = definition !== term.definition || nameValue !== term.name;
 
+  // "Найдено в курсе" must reflect only real, context-bearing hits — the FTS
+  // occurrences (preferred) or, before they're lazy-loaded, the system-created
+  // bindings. Bindings the user placed by hand carry no extracted snippet, so
+  // an empty card there is meaningless — exclude them from the count.
+  const systemConnCount = term.connections.filter(c => c.type !== 'editor').length;
+  const foundCount = Math.max(term.occurrences.length, systemConnCount);
+
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
@@ -79,7 +86,7 @@ export default function TermSelectedState({ term }: Props) {
 
       {/* Definition */}
       <div className="border-b px-4 py-3" style={{ borderColor: 'var(--lw-border-primary)' }}>
-        <p className="mb-1.5 text-xs font-medium" style={{ color: 'var(--lw-text-secondary)' }}>определение:</p>
+        <p className="mb-1.5 text-xs font-medium" style={{ color: 'var(--lw-text-secondary)' }}>Определение:</p>
         <textarea
           value={definition}
           onChange={e => {
@@ -97,16 +104,13 @@ export default function TermSelectedState({ term }: Props) {
       <div className="flex-1 overflow-y-auto lw-scrollbar px-4 py-3">
         <button
           onClick={() => dispatch({ type: 'OPEN_MODAL', modal: 'occurrences', data: { termId: term.id } })}
-          disabled={term.occurrences.length === 0 && term.connections.length === 0}
+          disabled={foundCount === 0}
           className="mb-4 flex w-full items-center justify-between rounded border px-3 py-2 text-xs font-medium transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-40"
           style={{ borderColor: 'var(--lw-border-primary)', color: 'var(--lw-text-secondary)' }}
           onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = 'var(--lw-bg-hover)'; }}
           onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
         >
-          {/* Use whichever is non-zero — `occurrences` is lazy-loaded so before
-              the modal is opened we fall back to the connection count, which
-              equals the number of bound steps. */}
-          <span>найдено в курсе ({Math.max(term.occurrences.length, term.connections.length)})</span>
+          <span>Найдено в курсе ({foundCount})</span>
           <ExternalLink size={11} />
         </button>
 
@@ -119,7 +123,7 @@ export default function TermSelectedState({ term }: Props) {
               title={connectionsCollapsed ? 'Раскрыть список связей' : 'Свернуть список связей'}
             >
               {connectionsCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-              связи:
+              Связи:
             </button>
             <button
               onClick={() => setShowLinkEditor(v => !v)}

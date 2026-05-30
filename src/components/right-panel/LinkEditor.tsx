@@ -90,6 +90,25 @@ export default function LinkEditor({ term, onClose }: LinkEditorProps) {
    * happens via `apiSetFtsIndexed`-style refetch: we just rely on the existing
    * Term in props for the original state. After all calls succeed, we close.
    */
+  /** Resolve a step id to its human-readable location in the course tree, so a
+   *  freshly-created binding shows real names instead of blank rows (that was
+   *  the "empty cards" bug — connections were stitched with empty strings). */
+  const locateStep = (stepId: string) => {
+    for (const m of course?.modules ?? []) {
+      for (const l of m.lessons) {
+        const s = l.steps.find(st => st.id === stepId);
+        if (s) {
+          return {
+            stepName: s.name,
+            moduleId: m.id, moduleName: m.name,
+            lessonId: l.id, lessonName: l.name,
+          };
+        }
+      }
+    }
+    return { stepName: '', moduleId: '', moduleName: '', lessonId: '', lessonName: '' };
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setSaveError(null);
@@ -122,15 +141,12 @@ export default function LinkEditor({ term, onClose }: LinkEditorProps) {
               is_primary: false,
               is_created_by_user: true,
             });
-            // Stitch a minimal Connection record so the UI shows it immediately.
+            // Stitch a Connection record (with real names) so the read-only
+            // "Связи" list shows it immediately instead of a blank row.
             newConns.push({
               id: numericToId('b', created.id),
               stepId: sid,
-              stepName: '',
-              moduleId: '',
-              moduleName: '',
-              lessonId: '',
-              lessonName: '',
+              ...locateStep(sid),
               type: 'editor',
             });
           } catch (err) {
@@ -153,8 +169,7 @@ export default function LinkEditor({ term, onClose }: LinkEditorProps) {
           if (existing) return existing;
           return {
             id: `b-${crypto.randomUUID()}`,
-            stepId: sid, stepName: '', moduleId: '', moduleName: '',
-            lessonId: '', lessonName: '', type: 'editor' as const,
+            stepId: sid, ...locateStep(sid), type: 'editor' as const,
           };
         });
         dispatch({ type: 'UPDATE_TERM', termId: term.id, updates: { connections: conns } });
@@ -172,7 +187,7 @@ export default function LinkEditor({ term, onClose }: LinkEditorProps) {
     <div className="rounded border p-2"
       style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)' }}>
       <p className="mb-2 text-xs font-medium" style={{ color: 'var(--lw-text-secondary)' }}>
-        выберите места вхождения термина выбрано: {selectedLinks.size}
+        Выберите места вхождения термина. Выбрано: {selectedLinks.size}
       </p>
       <p className="mb-2 text-xs" style={{ color: 'var(--lw-text-muted)' }}>
         <User size={9} className="inline" style={{ color: 'var(--lw-accent-amber)' }} /> — редактором,

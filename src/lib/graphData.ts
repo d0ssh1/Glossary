@@ -22,20 +22,17 @@ export function buildGraphData(
   const { course, allTerms, drillModuleId, drillLessonId, hierFilterIds, filters, selectedTermIds } = opts;
   if (!course) return { nodes: [], links: [] };
 
-  // Hierarchical filter — drop modules / lessons not in the include set.
-  const filtered = hierFilterIds === null
-    ? course
-    : {
-        ...course,
-        modules: course.modules
-          .filter(m => hierFilterIds.includes(m.id))
-          .map(m => ({ ...m, lessons: m.lessons.filter(l => hierFilterIds.includes(l.id)) })),
-      };
+  // Hierarchy is a *scope*, not a delete: all module/lesson nodes stay on the
+  // canvas, but a term only "counts" toward edges/membership when its binding
+  // lives in a lesson the user kept ticked. This is what Anton asked for —
+  // picking items changes WHERE the other filters apply, instead of chopping
+  // the picture. `null` means "everything in scope".
+  const scope = hierFilterIds === null ? null : new Set(hierFilterIds);
 
   let result: { nodes: GraphNode[]; links: GraphLink[] };
-  if (level === 'modules') result = buildModulesGraph(filtered, allTerms);
-  else if (level === 'lessons') result = buildLessonsGraph(filtered, allTerms, drillModuleId);
-  else result = buildTermsGraph(filtered, allTerms, drillModuleId, drillLessonId, filters.frequency);
+  if (level === 'modules') result = buildModulesGraph(course, allTerms, scope);
+  else if (level === 'lessons') result = buildLessonsGraph(course, allTerms, drillModuleId, scope);
+  else result = buildTermsGraph(course, allTerms, drillModuleId, drillLessonId, filters.frequency, scope);
 
   // Weight filter — drop edges outside [from, to], then drop orphaned non-center nodes.
   if (filters.weightEnabled) {
@@ -47,9 +44,10 @@ export function buildGraphData(
     result.nodes = dropOrphans(result.nodes, result.links);
   }
 
-  // Logical filter (requires selected terms in left panel).
+  // Logical filter (requires selected terms in the left panel). Honour the
+  // hierarchy scope so membership matches what the rest of the view shows.
   if (selectedTermIds.length > 0 && filters.logic !== 'or') {
-    result = applyLogicFilter(result, allTerms, selectedTermIds, filters.logic, level);
+    result = applyLogicFilter(result, allTerms, selectedTermIds, filters.logic, level, scope);
   }
 
   return result;
@@ -87,13 +85,14 @@ function applyLogicFilter(
   selectedTermIds: string[],
   logic: 'and' | 'not' | 'xor',
   level: GraphLevel,
+  scope: Set<string> | null,
 ): { nodes: GraphNode[]; links: GraphLink[] } {
   const selectedTerms = allTerms.filter(t => selectedTermIds.includes(t.id));
 
   const isConnected = (node: GraphNode): number => {
     if (level === 'terms') return selectedTermIds.includes(node.id) ? 1 : 0;
     const check = (t: Term) =>
-      level === 'modules' ? termInModule(t, node.id) : termInLesson(t, node.id);
+      level === 'modules' ? termInModule(t, node.id, scope) : termInLesson(t, node.id, scope);
     return selectedTerms.reduce((acc, t) => acc + (check(t) ? 1 : 0), 0);
   };
 
@@ -129,15 +128,19 @@ function norm(name: string): string {
  * many modules. Falls back to `term.moduleId` (the legacy single-home field)
  * when connections haven't been populated (e.g. before "Собрать данные").
  */
-function termInModule(t: Term, moduleId: string): boolean {
-  if (t.connections.some(c => c.moduleId === moduleId)) return true;
-  return t.moduleId === moduleId;
+function termInModule(t: Term, moduleId: string, scope?: Set<string> | null): boolean {
+  // A binding counts only if its lesson is in scope (hierarchy selection).
+  if (t.connections.some(c => c.moduleId === moduleId && (!scope || scope.has(c.lessonId)))) return true;
+  return t.moduleId === moduleId && (!scope || (!!t.lessonId && scope.has(t.lessonId)));
 }
 
 /** Same idea, scoped to a single lesson. */
-function termInLesson(t: Term, lessonId: string): boolean {
-  if (t.connections.some(c => c.lessonId === lessonId)) return true;
-  return t.lessonId === lessonId;
+function termInLesson(t: Term, lessonId: string, scope?: Set<string> | null): boolean {
+  if (!scope || scope.has(lessonId)) {
+    if (t.connections.some(c => c.lessonId === lessonId)) return true;
+    if (t.lessonId === lessonId) return true;
+  }
+  return false;
 }
 
 /** Count shared terms (by normalized name) between two groups. */
@@ -178,7 +181,7 @@ function buildLessonOrder(course: Course): Map<string, number> {
  * Heavier edges → thicker line (rendered by D3Graph via `weight`); d3-force
  * naturally pulls hubs (modules with many incident edges) toward the centre.
  */
-function buildModulesGraph(course: Course, allTerms: Term[]) {
+function buildModulesGraph(course: Course, allTerms: Term[], scope: Set<string> | null) {
   const nodes: GraphNode[] = course.modules.map(m => ({
     id: m.id, name: m.name, type: 'module',
   }));
@@ -190,7 +193,7 @@ function buildModulesGraph(course: Course, allTerms: Term[]) {
   for (const m of course.modules) termsByModule.set(m.id, []);
   for (const t of allTerms) {
     for (const m of course.modules) {
-      if (termInModule(t, m.id)) termsByModule.get(m.id)!.push(t);
+      if (termInModule(t, m.id, scope)) termsByModule.get(m.id)!.push(t);
     }
   }
 
@@ -221,7 +224,7 @@ function buildModulesGraph(course: Course, allTerms: Term[]) {
  * by shared terms between each pair of lessons in that module. Same colour
  * convention as modules level — thickness/intensity scales with the weight.
  */
-function buildLessonsGraph(course: Course, allTerms: Term[], drillModuleId: string | undefined) {
+function buildLessonsGraph(course: Course, allTerms: Term[], drillModuleId: string | undefined, scope: Set<string> | null) {
   const mod = course.modules.find(m => m.id === drillModuleId) || course.modules[0];
   if (!mod) return { nodes: [], links: [] };
 
@@ -234,9 +237,9 @@ function buildLessonsGraph(course: Course, allTerms: Term[], drillModuleId: stri
   for (const t of allTerms) {
     // A term participates in this module's lessons-level graph if any of its
     // bindings live in the module — not just if its "home lesson" is here.
-    if (!termInModule(t, mod.id)) continue;
+    if (!termInModule(t, mod.id, scope)) continue;
     for (const l of mod.lessons) {
-      if (termInLesson(t, l.id)) termsByLesson.get(l.id)!.push(t);
+      if (termInLesson(t, l.id, scope)) termsByLesson.get(l.id)!.push(t);
     }
   }
 
@@ -276,6 +279,7 @@ function buildTermsGraph(
   drillModuleId: string | undefined,
   drillLessonId: string | undefined,
   frequency: 'all' | 'first-appearance' | 'mention',
+  scope: Set<string> | null,
 ) {
   const mod = course.modules.find(m => m.id === drillModuleId);
   const lesson = mod?.lessons.find(l => l.id === drillLessonId) || mod?.lessons[0];
@@ -283,7 +287,10 @@ function buildTermsGraph(
 
   const lessonOrder = buildLessonOrder(course);
   const currentPos = lessonOrder.get(lesson.id) ?? Number.MAX_SAFE_INTEGER;
-  // Pick terms by any binding in this lesson, not just the legacy single-home field.
+  // Pick terms by any binding in this lesson. The user drilled into this lesson
+  // deliberately, so ignore the hierarchy scope for membership here (scope only
+  // gates the cross-lesson first-appearance check below).
+  void scope;
   const lessonTerms = allTerms.filter(t => termInLesson(t, lesson.id));
   const centerId = `center-${lesson.id}`;
 

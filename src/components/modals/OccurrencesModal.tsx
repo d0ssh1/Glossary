@@ -36,7 +36,7 @@ export default function OccurrencesModal() {
           Найдено в курсе: {term.name}
         </h3>
         <p className="mt-0.5 text-xs" style={{ color: 'var(--lw-text-muted)' }}>
-          вхождений: {term.occurrences.length}
+          Вхождений: {term.occurrences.length}
         </p>
       </div>
       <div className="lw-scrollbar max-h-[70vh] overflow-y-auto px-5 py-4">

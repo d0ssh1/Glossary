@@ -7,7 +7,7 @@ import type { FilterStatus } from '@/types';
 
 const STATUS_FILTERS: { value: FilterStatus; label: string; color?: string }[] = [
   { value: 'all', label: 'Все' },
-  { value: 'no-trait', label: 'Без признаки', color: 'var(--lw-error)' },
+  { value: 'no-trait', label: 'Без признака', color: 'var(--lw-error)' },
   { value: 'in-progress', label: 'В работе', color: 'var(--lw-warning)' },
   { value: 'ready', label: 'Готово', color: 'var(--lw-success)' },
 ];
@@ -97,7 +97,7 @@ export default function GlossaryTab() {
             type="text"
             value={searchTerm}
             onChange={e => dispatch({ type: 'SET_SEARCH_TERM', term: e.target.value })}
-            placeholder="поиск..."
+            placeholder="Поиск..."
             className="flex-1 bg-transparent text-xs outline-none"
             style={{ color: 'var(--lw-text-primary)' }}
           />
@@ -213,10 +213,10 @@ export default function GlossaryTab() {
                 }}
                 className="accent-[var(--lw-accent-graphite)]"
               />
-              выбрать всё
+              Выбрать всё
             </label>
             <span className="text-xs" style={{ color: 'var(--lw-text-muted)' }}>
-              выбрано: {selectedTermIds.length}
+              Выбрано: {selectedTermIds.length}
             </span>
           </div>
           <button

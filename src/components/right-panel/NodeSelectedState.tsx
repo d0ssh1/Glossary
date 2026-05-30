@@ -130,7 +130,7 @@ export default function NodeSelectedState() {
           type="text"
           value={nodeSearch}
           onChange={e => setNodeSearch(e.target.value)}
-          placeholder="поиск..."
+          placeholder="Поиск..."
           className="flex-1 bg-transparent text-xs outline-none"
           style={{ color: 'var(--lw-text-primary)' }}
         />

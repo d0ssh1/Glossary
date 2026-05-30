@@ -44,7 +44,7 @@ export default function AdditionTab() {
       </div>
 
       <p className="mb-2 text-xs" style={{ color: 'var(--lw-text-secondary)' }}>
-        вставить список через разделитель (&quot;,&quot; &quot; &quot; &quot;;&quot; &quot;.&quot; &quot;|&quot;)
+        Вставить список через разделитель (&quot;,&quot; &quot; &quot; &quot;;&quot; &quot;.&quot; &quot;|&quot;)
       </p>
 
       <textarea

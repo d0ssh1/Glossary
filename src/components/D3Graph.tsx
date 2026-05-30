@@ -7,7 +7,22 @@ import { useApp } from '@/store/AppContext';
 import { buildGraphData } from '@/lib/graphData';
 import { statusHex, linkHex } from '@/lib/constants';
 import { contextKey, loadPositions, savePositions } from '@/lib/nodePositions';
-import type { GraphNode, GraphLink } from '@/types';
+import type { GraphNode, GraphLink, GraphLevel } from '@/types';
+
+/** A link object after d3.forceLink() has resolved source/target into nodes. */
+type SimLink = GraphLink & d3.SimulationLinkDatum<GraphNode>;
+
+/** Edge thickness scales with weight, with a per-level floor so terms-level
+ *  palki never get lost under the surrounding nodes. */
+function edgeWidthFor(level: GraphLevel, d: GraphLink): number {
+  const floor = level === 'terms' ? 2.5 : 2;
+  return Math.max(floor, 1 + (d.weight || 1) * 0.6);
+}
+
+/** Capitalize the first letter (terms are sentence-cased regardless of input). */
+function capitalize(s: string): string {
+  return s.length > 0 ? s[0].toUpperCase() + s.slice(1) : s;
+}
 
 export default function D3Graph() {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -26,7 +41,20 @@ export default function D3Graph() {
   const drillModuleId = breadcrumbs.find(b => b.level === 'lessons')?.id;
   const drillLessonId = breadcrumbs.find(b => b.level === 'terms')?.id;
 
+  // Selections + live "active" values are kept in refs so that selecting a node
+  // or edge only restyles the existing SVG (a cheap, second effect) instead of
+  // tearing down and rebuilding the whole simulation — which is what made the
+  // graph "jump" on every click.
+  const linkSelRef = useRef<d3.Selection<SVGLineElement, SimLink, SVGGElement, unknown> | null>(null);
+  const nodeSelRef = useRef<d3.Selection<SVGGElement, GraphNode, SVGGElement, unknown> | null>(null);
+  const activeNodeIdRef = useRef(activeNodeId);
+  const activeLinkIdRef = useRef(activeLinkId);
+  activeNodeIdRef.current = activeNodeId;
+  activeLinkIdRef.current = activeLinkId;
 
+  // ---- Heavy effect: build graph + run force simulation. Re-runs ONLY when the
+  //      graph's structure can change (level, data, filters) — never on a mere
+  //      selection change.
   useEffect(() => {
     if (!svgRef.current || !containerRef.current) return;
 
@@ -38,8 +66,6 @@ export default function D3Graph() {
     svg.selectAll('*').remove();
     svg.attr('width', width).attr('height', height);
 
-    // No arrowheads — per spec edges are plain palki (lines), the colour /
-    // thickness encodes everything we need.
     const g = svg.append('g');
 
     // Zoom behavior
@@ -67,42 +93,43 @@ export default function D3Graph() {
       const saved = savedPositions[n.id];
       if (saved) { n.x = saved.x; n.y = saved.y; n.fx = saved.x; n.fy = saved.y; }
     });
-    // Cast links for D3 force simulation
-    const d3Links = links.map(l => ({ ...l })) as unknown as d3.SimulationLinkDatum<GraphNode>[];
+
+    // ONE array for both the force-link and the rendered <line> selection. The
+    // simulation mutates source/target on these same objects, so the tick
+    // handler reads real node coordinates (binding `links` separately left the
+    // string source/target untouched → every line collapsed to (0,0) and was
+    // invisible — that was the missing-palki bug).
+    const simLinks: SimLink[] = links.map(l => ({ ...l })) as unknown as SimLink[];
 
     // Force simulation
     const simulation = d3.forceSimulation<GraphNode>(nodes)
-      .force('link', d3.forceLink<GraphNode, d3.SimulationLinkDatum<GraphNode>>(d3Links).id((d: GraphNode) => d.id).distance(graphLevel === 'terms' ? 100 : 160))
+      .force('link', d3.forceLink<GraphNode, SimLink>(simLinks).id((d: GraphNode) => d.id).distance(graphLevel === 'terms' ? 100 : 160))
       .force('charge', d3.forceManyBody().strength(graphLevel === 'terms' ? -300 : -500))
       .force('center', d3.forceCenter(width / 2, height / 2))
       .force('collide', d3.forceCollide<GraphNode>().radius(d => d.type === 'term' ? 25 : 40));
 
-    // Edge styling — palka thickness scales with weight, with a per-level floor
-    // so terms-level edges never get lost under the surrounding nodes.
-    const edgeWidth = (d: GraphLink): number => {
-      const floor = graphLevel === 'terms' ? 2.5 : 2;
-      return Math.max(floor, 1 + (d.weight || 1) * 0.6);
-    };
-
     // Draw links (no arrowheads — per spec the edges are plain palki).
     const link = g.append('g')
       .attr('class', 'links')
-      .selectAll('line')
-      .data(links)
+      .selectAll<SVGLineElement, SimLink>('line')
+      .data(simLinks)
       .enter()
       .append('line')
-      .attr('stroke', (d: GraphLink) => linkHex[d.type])
-      .attr('stroke-width', edgeWidth)
-      .attr('stroke-opacity', 0.85);
+      .attr('stroke', (d) => linkHex[d.type])
+      .attr('stroke-width', (d) => edgeWidthFor(graphLevel, d))
+      .attr('stroke-opacity', 0.85)
+      .style('cursor', 'pointer');
+    linkSelRef.current = link;
 
     // Draw nodes
     const nodeGroup = g.append('g')
       .attr('class', 'nodes')
-      .selectAll('g')
+      .selectAll<SVGGElement, GraphNode>('g')
       .data(nodes)
       .enter()
       .append('g')
       .style('cursor', 'pointer');
+    nodeSelRef.current = nodeGroup;
 
     // Node shapes
     nodeGroup.each(function (d: GraphNode) {
@@ -130,6 +157,7 @@ export default function D3Graph() {
           .attr('filter', 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))');
       } else {
         el.append('rect')
+          .attr('class', 'node-box')
           .attr('width', 180)
           .attr('height', 54)
           .attr('x', -90)
@@ -157,11 +185,8 @@ export default function D3Graph() {
       .style('user-select', 'none')
       .each(function (d: GraphNode) {
         const text = d3.select(this);
-        // Capitalize the first letter for term nodes — spec shows them sentence-cased
-        // regardless of how the user typed them in the bulk-add textarea.
-        const display = d.type === 'term' && d.name.length > 0
-          ? d.name[0].toUpperCase() + d.name.slice(1)
-          : d.name;
+        // Sentence-case term labels regardless of how the user typed them.
+        const display = d.type === 'term' ? capitalize(d.name) : d.name;
         // Wrap to fit the ~26-char per-line budget of the wider 180px box.
         // Two lines max; if it still overflows we ellipsize the second line.
         const MAX_CHARS = 26;
@@ -210,10 +235,10 @@ export default function D3Graph() {
     // Simulation tick
     simulation.on('tick', () => {
       link
-        .attr('x1', (d: unknown) => ((d as GraphLink).source as GraphNode).x || 0)
-        .attr('y1', (d: unknown) => ((d as GraphLink).source as GraphNode).y || 0)
-        .attr('x2', (d: unknown) => ((d as GraphLink).target as GraphNode).x || 0)
-        .attr('y2', (d: unknown) => ((d as GraphLink).target as GraphNode).y || 0);
+        .attr('x1', (d) => (d.source as GraphNode).x || 0)
+        .attr('y1', (d) => (d.source as GraphNode).y || 0)
+        .attr('x2', (d) => (d.target as GraphNode).x || 0)
+        .attr('y2', (d) => (d.target as GraphNode).y || 0);
 
       nodeGroup.attr('transform', (d: GraphNode) => `translate(${d.x || 0},${d.y || 0})`);
     });
@@ -243,56 +268,56 @@ export default function D3Graph() {
 
     nodeGroup.call(drag as unknown as d3.DragBehavior<SVGGElement, GraphNode, unknown>);
 
+    // Helper to restore a link to its resting style (honouring current selection).
+    const restLink = () => {
+      link
+        .attr('stroke', (d) => activeLinkIdRef.current && d.id === activeLinkIdRef.current ? '#D4A056' : linkHex[d.type])
+        .attr('stroke-width', (d) => activeLinkIdRef.current && d.id === activeLinkIdRef.current
+          ? 2 + (d.weight || 1)
+          : edgeWidthFor(graphLevel, d))
+        .style('opacity', 0.85);
+    };
+
     // Hover effects
     let lastClickTime = 0;
 
     nodeGroup
       .on('mouseenter', function (_event: unknown, hovered: GraphNode) {
-        // Dim all
         nodeGroup.style('opacity', 0.2);
         link.style('opacity', 0.1);
 
-        // Find connected
         const connectedNodeIds = new Set<string>();
         connectedNodeIds.add(hovered.id);
-        links.forEach((l: GraphLink) => {
+        simLinks.forEach((l) => {
           const sId = typeof l.source === 'string' ? l.source : (l.source as GraphNode).id;
           const tId = typeof l.target === 'string' ? l.target : (l.target as GraphNode).id;
           if (sId === hovered.id) connectedNodeIds.add(tId);
           if (tId === hovered.id) connectedNodeIds.add(sId);
         });
 
-        // Highlight connected
         nodeGroup.filter((d: GraphNode) => connectedNodeIds.has(d.id))
           .style('opacity', 1);
 
-        link.filter((d: GraphLink) => {
+        link.filter((d) => {
           const sId = typeof d.source === 'string' ? d.source : (d.source as GraphNode).id;
           const tId = typeof d.target === 'string' ? d.target : (d.target as GraphNode).id;
           return sId === hovered.id || tId === hovered.id;
         })
           .style('opacity', 1)
           .attr('stroke', '#D4A056')
-          .attr('stroke-width', (d: GraphLink) => 2 + (d.weight || 1));
+          .attr('stroke-width', (d) => 2 + (d.weight || 1));
 
         d3.select(this).style('opacity', 1);
       })
       .on('mouseleave', function () {
         nodeGroup.style('opacity', 1);
-        link.style('opacity', 0.85)
-          .attr('stroke', (d: GraphLink) => activeLinkId && d.id === activeLinkId ? '#D4A056' : linkHex[d.type])
-          .attr('stroke-width', (d: GraphLink) => activeLinkId && d.id === activeLinkId
-            ? 2 + (d.weight || 1)
-            : edgeWidth(d));
+        restLink();
       })
       .on('click', function (_event: unknown, d: GraphNode) {
         const now = Date.now();
         const isDoubleClick = now - lastClickTime < 300;
         lastClickTime = now;
-
         if (isDoubleClick) return; // Let dblclick handle it
-
-        // Single click: select node, show in right panel
         dispatch({ type: 'SET_ACTIVE_NODE', nodeId: d.id });
       })
       .on('dblclick', function (_event: unknown, d: GraphNode) {
@@ -303,25 +328,13 @@ export default function D3Graph() {
         }
       });
 
-    // Link click — open "Смежные термины X и Y" panel.
+    // Link interactions
     link
-      .style('cursor', 'pointer')
-      .on('click', function (event: Event, d: GraphLink) {
+      .on('click', function (event: Event, d) {
         event.stopPropagation();
         dispatch({ type: 'SET_ACTIVE_LINK', linkId: d.id });
-      });
-
-    // Visually mark the active link (selected via click).
-    if (activeLinkId) {
-      link
-        .filter((d: GraphLink) => d.id === activeLinkId)
-        .attr('stroke', '#D4A056')
-        .attr('stroke-width', (d: GraphLink) => 2 + (d.weight || 1));
-    }
-
-    // Link hover
-    link
-      .on('mouseenter', function (_event: unknown, hovered: GraphLink) {
+      })
+      .on('mouseenter', function (_event: unknown, hovered) {
         link.style('opacity', 0.1);
         nodeGroup.style('opacity', 0.2);
         d3.select(this).style('opacity', 1).attr('stroke', '#D4A056').attr('stroke-width', 3);
@@ -331,18 +344,43 @@ export default function D3Graph() {
         nodeGroup.filter((d: GraphNode) => d.id === sId || d.id === tId).style('opacity', 1);
       })
       .on('mouseleave', function () {
-        link.style('opacity', 0.7)
-          .attr('stroke', (d: GraphLink) => activeLinkId && d.id === activeLinkId ? '#D4A056' : linkHex[d.type])
-          .attr('stroke-width', (d: GraphLink) => activeLinkId && d.id === activeLinkId
-            ? 2 + (d.weight || 1)
-            : edgeWidth(d));
         nodeGroup.style('opacity', 1);
+        restLink();
       });
+
+    // Apply the current selection styling once on (re)build.
+    restLink();
+    if (activeNodeId) {
+      nodeGroup.select<SVGRectElement>('rect.node-box')
+        .attr('stroke', (d) => d.id === activeNodeId ? '#D4A056' : '#E0DFDA')
+        .attr('stroke-width', (d) => d.id === activeNodeId ? 2.5 : 1.5);
+    }
 
     return () => {
       simulation.stop();
     };
-  }, [graphLevel, activeNodeId, activeLinkId, activeCourse, activeGlossary, allTerms, drillModuleId, drillLessonId, hierFilterIds, graphFilters, selectedTermIds, dispatch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [graphLevel, activeCourse, activeGlossary, allTerms, drillModuleId, drillLessonId, hierFilterIds, graphFilters, selectedTermIds, dispatch]);
+
+  // ---- Light effect: re-style the existing graph when the selected node/edge
+  //      changes. No rebuild, no simulation restart → no "jump".
+  useEffect(() => {
+    const link = linkSelRef.current;
+    const nodeGroup = nodeSelRef.current;
+    if (link) {
+      link
+        .attr('stroke', (d) => activeLinkId && d.id === activeLinkId ? '#D4A056' : linkHex[d.type])
+        .attr('stroke-width', (d) => activeLinkId && d.id === activeLinkId
+          ? 2 + (d.weight || 1)
+          : edgeWidthFor(graphLevel, d))
+        .style('opacity', 0.85);
+    }
+    if (nodeGroup) {
+      nodeGroup.select<SVGRectElement>('rect.node-box')
+        .attr('stroke', (d) => d.id === activeNodeId ? '#D4A056' : '#E0DFDA')
+        .attr('stroke-width', (d) => d.id === activeNodeId ? 2.5 : 1.5);
+    }
+  }, [activeNodeId, activeLinkId, graphLevel]);
 
   return (
     <div ref={containerRef} className="relative h-full w-full">

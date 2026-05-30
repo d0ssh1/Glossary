@@ -78,10 +78,10 @@ export default function HierarchicalFilter() {
       style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)' }}>
       <div className="mb-2 flex items-center justify-between">
         <button onClick={selectAll} className="text-xs font-medium" style={{ color: 'var(--lw-accent-amber)' }}>
-          выбрать всё
+          Выбрать всё
         </button>
         <button onClick={clearAll} className="text-xs" style={{ color: 'var(--lw-text-muted)' }}>
-          снять
+          Снять
         </button>
       </div>
 
@@ -149,7 +149,7 @@ export default function HierarchicalFilter() {
 
       {state.hierFilterIds !== null && (
         <p className="mt-2 text-[10px]" style={{ color: 'var(--lw-accent-amber)' }}>
-          фильтр активен — показано: {selected.length}/{allIds.length}
+          Область задана — выбрано: {selected.length}/{allIds.length}
         </p>
       )}
     </div>

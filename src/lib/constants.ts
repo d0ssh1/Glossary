@@ -31,7 +31,7 @@ export const PANEL_WIDTH = {
 export const MOBILE_BREAKPOINT = 900;
 
 export const statusLabel: Record<TermStatus, string> = {
-  'no-trait': '○ Без признаки',
+  'no-trait': '○ Без признака',
   'in-progress': '◐ В работе',
   'ready': '✓ Определение готово',
 };

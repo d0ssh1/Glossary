@@ -50,10 +50,12 @@ export default function FiltersTab() {
   };
 
   return (
-    <div className="px-4 py-4">
+    // The whole tab scrolls so the Apply / Reset buttons stay reachable even
+    // when every section is expanded (previously they fell off the bottom).
+    <div className="h-full overflow-y-auto lw-scrollbar px-4 py-4">
       <p className="mb-3 text-xs font-medium" style={{ color: 'var(--lw-text-secondary)' }}>Фильтры:</p>
 
-      {/* 1. Hierarchical — commits live (drives left-panel term list immediately). */}
+      {/* 1. Hierarchy — defines the scope the filters below apply to. */}
       <div className="mb-3">
         <button
           onClick={() => setHierExpanded(!hierExpanded)}
@@ -63,15 +65,23 @@ export default function FiltersTab() {
           {hierExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
           Иерархия модулей и уроков
         </button>
-        {hierExpanded && <HierarchicalFilter />}
+        {hierExpanded && (
+          <>
+            <p className="ml-4 mb-1 mt-1 text-[10px] italic" style={{ color: 'var(--lw-text-muted)' }}>
+              Отметьте модули и уроки, в пределах которых считаются связи. Узлы
+              остаются на схеме, меняется только область действия фильтров.
+            </p>
+            <HierarchicalFilter />
+          </>
+        )}
       </div>
 
       {/* 2. Frequency */}
-      <FilterGroup label="частота термина" expanded={freqExpanded} onToggle={() => setFreqExpanded(!freqExpanded)}>
+      <FilterGroup label="Частота термина" expanded={freqExpanded} onToggle={() => setFreqExpanded(!freqExpanded)}>
         {([
-          ['all', 'все упоминания'],
-          ['first-appearance', 'только первое появление'],
-          ['mention', 'только повторные упоминания'],
+          ['all', 'Все упоминания'],
+          ['first-appearance', 'Только первое появление'],
+          ['mention', 'Только повторные упоминания'],
         ] as [FrequencyMode, string][]).map(([value, label]) => (
           <label key={value} className="flex cursor-pointer items-center gap-1.5 text-xs" style={{ color: 'var(--lw-text-secondary)' }}>
             <input
@@ -89,8 +99,10 @@ export default function FiltersTab() {
       {/* 3. Logic */}
       <FilterGroup label="Логические функции" expanded={logicExpanded} onToggle={() => setLogicExpanded(!logicExpanded)}>
         <p className="mb-1 text-[10px] italic" style={{ color: 'var(--lw-text-muted)' }}>
-          Действует только когда выделены термины (чекбоксами). Узел остаётся,
-          если он связан с выделенными согласно выбранной операции.
+          Действует, когда выделены термины (чекбоксами). Узел остаётся, если он
+          связан с выделенными согласно операции. «И» оставит только узлы, где
+          есть сразу все выбранные термины — если их нет в одном узле, схема
+          будет пустой; для объединения используйте «ИЛИ».
         </p>
         {([
           ['or', 'ИЛИ — связан хотя бы с одним'],
@@ -119,7 +131,7 @@ export default function FiltersTab() {
           onChange={e => patch({ weightEnabled: e.target.checked })}
           className="accent-[var(--lw-accent-graphite)]"
         />
-        <span className="text-xs" style={{ color: 'var(--lw-text-secondary)' }}>вес связи от</span>
+        <span className="text-xs" style={{ color: 'var(--lw-text-secondary)' }}>Вес связи от</span>
         <input
           type="number"
           value={draft.weightFrom}
@@ -184,19 +196,19 @@ export default function FiltersTab() {
               <div className="space-y-0.5 text-xs" style={{ color: 'var(--lw-text-muted)' }}>
                 <div className="flex items-center gap-2">
                   <span className="h-2 w-2 rounded-full bg-[var(--lw-warning)]" />
-                  оранжевый — нет определения
+                  Оранжевый — нет определения
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="h-2 w-2 rounded-full bg-[var(--lw-success)]" />
-                  зелёный — готов
+                  Зелёный — готов
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="h-0.5 w-4 bg-[#C0C0B8]" />
-                  серое ребро — упоминается
+                  Серое ребро — термин упоминается повторно
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="h-0.5 w-4 bg-[#2C2C2C]" />
-                  чёрное — первое появление
+                  Чёрное ребро — первое появление термина
                 </div>
               </div>
             </div>

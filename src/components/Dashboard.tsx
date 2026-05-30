@@ -88,7 +88,7 @@ export default function Dashboard() {
             onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
           >
             <Plus size={14} />
-            добавить
+            Добавить
           </button>
         </div>
 
@@ -109,7 +109,7 @@ export default function Dashboard() {
                   <p className="mt-0.5 text-xs" style={{ color: 'var(--lw-text-muted)' }}>
                     {course.lastImportDate
                       ? `Последний импорт: ${course.lastImportDate}`
-                      : 'еще не импортирован'}
+                      : 'Ещё не импортирован'}
                   </p>
                 </div>
                 <button
@@ -128,7 +128,7 @@ export default function Dashboard() {
               <div className="px-5 py-4">
                 <div className="mb-3 flex items-center justify-between">
                   <span className="text-sm font-medium" style={{ color: 'var(--lw-text-secondary)' }}>
-                    глоссарии:
+                    Глоссарии:
                   </span>
                   <button
                     onClick={() => handleAddGlossary(course.id)}
@@ -138,7 +138,7 @@ export default function Dashboard() {
                     onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
                   >
                     <Plus size={12} />
-                    добавить
+                    Добавить
                   </button>
                 </div>
 
