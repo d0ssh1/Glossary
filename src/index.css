@@ -60,7 +60,10 @@
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     background-color: var(--lw-bg-primary);
     color: var(--lw-text-primary);
-    overflow: hidden;
+    /* Only lock horizontal scroll. Vertical scrolling must stay available so
+       the dashboard course list can be scrolled; the full-screen editor is
+       self-contained at h-screen and won't produce vertical page scroll. */
+    overflow-x: hidden;
   }
 }
 

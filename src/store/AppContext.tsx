@@ -11,6 +11,7 @@ import {
   apiEnabled, listCourses, getCourse, listGlossaries, getGlossary,
   createCourse as apiCreateCourseRaw, createGlossary as apiCreateGlossaryRaw,
   updateTerm as apiUpdateTermRaw, deleteTerm as apiDeleteTermRaw,
+  deleteCourse as apiDeleteCourseRaw,
   bulkCreateTerms as apiBulkCreateTermsRaw,
   importCourse as apiImportCourseRaw, downloadScorm as apiDownloadScormRaw,
   collectBindings as apiCollectBindingsRaw, getImportStatus as apiGetImportStatus,
@@ -129,6 +130,7 @@ type Action =
   | { type: 'SET_COURSES'; courses: Course[] }
   | { type: 'ADD_COURSE'; course: Course }
   | { type: 'REPLACE_COURSE'; course: Course }
+  | { type: 'DELETE_COURSE'; courseId: string }
   | { type: 'ADD_GLOSSARY'; courseId: string; glossary: Glossary }
   | { type: 'UPDATE_TERM'; termId: string; updates: Partial<Term> }
   | { type: 'DELETE_TERM'; termId: string }
@@ -248,6 +250,19 @@ export function appReducer(state: AppState, action: Action): AppState {
         ...state,
         courses: state.courses.map(c => (c.id === action.course.id ? action.course : c)),
       };
+    case 'DELETE_COURSE': {
+      const courses = state.courses.filter(c => c.id !== action.courseId);
+      const wasActive = state.activeCourseId === action.courseId;
+      return {
+        ...state,
+        courses,
+        // Clear selections that pointed at the removed course so the UI doesn't
+        // dangle on a now-missing id.
+        activeCourseId: wasActive ? null : state.activeCourseId,
+        activeGlossaryId: wasActive ? null : state.activeGlossaryId,
+        activeTermId: wasActive ? null : state.activeTermId,
+      };
+    }
     case 'ADD_GLOSSARY': {
       const updated = state.courses.map(c =>
         c.id === action.courseId
@@ -444,6 +459,18 @@ export function useApi() {
     }
   }, [dispatch, findGlossaryId]);
 
+  const apiDeleteCourse = useCallback(async (courseId: string) => {
+    // Optimistic: drop it from the UI immediately, then tell the backend.
+    dispatch({ type: 'DELETE_COURSE', courseId });
+    if (apiEnabled()) {
+      try {
+        await apiDeleteCourseRaw(stringIdToNumeric(courseId));
+      } catch (err) {
+        console.error('[useApi] deleteCourse failed', err);
+      }
+    }
+  }, [dispatch]);
+
   const apiBulkAddTerms = useCallback(async (glossaryId: string, names: string[]) => {
     if (apiEnabled()) {
       try {
@@ -589,7 +616,7 @@ export function useApi() {
   }, [dispatch, findGlossaryId]);
 
   return {
-    apiCreateCourse, apiCreateGlossary,
+    apiCreateCourse, apiCreateGlossary, apiDeleteCourse,
     apiUpdateTerm, apiDeleteTerm, apiBulkAddTerms,
     apiImportCourse, apiDownloadScorm, apiCollectBindings, apiRefetchCourse,
     apiSetFtsIndexed, apiLoadOccurrences,

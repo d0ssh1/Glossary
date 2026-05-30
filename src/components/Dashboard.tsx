@@ -1,7 +1,7 @@
 // ============================================================
 // SCREEN 1 — Dashboard (Course Manager)
 // ============================================================
-import { Plus, Upload, FileText, ChevronRight } from 'lucide-react';
+import { Plus, Upload, FileText, ChevronRight, Trash2 } from 'lucide-react';
 import { useApp } from '@/store/AppContext';
 import type { Glossary } from '@/types';
 
@@ -34,6 +34,10 @@ export default function Dashboard() {
       breadcrumbs: [{ id: courseId, name: course.name, level: 'modules' }],
     });
     dispatch({ type: 'NAVIGATE', screen: 'editor' });
+  };
+
+  const handleDeleteCourse = (courseId: string, courseName: string) => {
+    dispatch({ type: 'OPEN_MODAL', modal: 'confirm-delete', data: { courseId, courseName } });
   };
 
   const handleExportScorm = (courseId: string, glossaryId: string) => {
@@ -112,16 +116,29 @@ export default function Dashboard() {
                       : 'Ещё не импортирован'}
                   </p>
                 </div>
-                <button
-                  onClick={() => handleImportCourse(course.id)}
-                  className="flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-medium transition-all duration-200"
-                  style={{ borderColor: 'var(--lw-border-primary)', color: 'var(--lw-text-secondary)' }}
-                  onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--lw-bg-hover)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                >
-                  <Upload size={13} />
-                  Импорт курса
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleImportCourse(course.id)}
+                    className="flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-medium transition-all duration-200"
+                    style={{ borderColor: 'var(--lw-border-primary)', color: 'var(--lw-text-secondary)' }}
+                    onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--lw-bg-hover)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                  >
+                    <Upload size={13} />
+                    Импорт курса
+                  </button>
+                  <button
+                    onClick={() => handleDeleteCourse(course.id, course.name)}
+                    className="flex items-center justify-center rounded border p-1.5 transition-all duration-200"
+                    style={{ borderColor: 'var(--lw-border-primary)', color: 'var(--lw-text-muted)' }}
+                    title="Удалить курс"
+                    aria-label="Удалить курс"
+                    onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--lw-bg-hover)'; e.currentTarget.style.color = 'var(--lw-error)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--lw-text-muted)'; }}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
 
               {/* Glossaries Section */}
@@ -177,7 +194,7 @@ export default function Dashboard() {
                         }}
                         onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
                       >
-                        перевести в scorm
+                        Перевести в SCORM
                         <ChevronRight size={12} />
                       </button>
                     </div>
