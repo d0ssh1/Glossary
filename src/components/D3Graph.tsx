@@ -1,7 +1,7 @@
 // ============================================================
 // D3 FORCE-DIRECTED GRAPH
 // ============================================================
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { useApp } from '@/store/AppContext';
 import { buildGraphData } from '@/lib/graphData';
@@ -52,6 +52,10 @@ export default function D3Graph() {
   activeNodeIdRef.current = activeNodeId;
   activeLinkIdRef.current = activeLinkId;
 
+  // Track whether the current graph has edges — drives the "no links" hint overlay.
+  const [linkCount, setLinkCount] = useState(0);
+  const [nodeCount, setNodeCount] = useState(0);
+
   // ---- Heavy effect: build graph + run force simulation. Re-runs ONLY when the
   //      graph's structure can change (level, data, filters) — never on a mere
   //      selection change.
@@ -85,6 +89,10 @@ export default function D3Graph() {
       filters: graphFilters,
       selectedTermIds,
     });
+
+    // Update overlay state ASAP so the hint renders without waiting for ticks.
+    setNodeCount(nodes.length);
+    setLinkCount(links.length);
 
     // Restore saved positions for this drill-down context.
     const positionsKey = contextKey(graphLevel, drillModuleId, drillLessonId);
@@ -382,10 +390,69 @@ export default function D3Graph() {
     }
   }, [activeNodeId, activeLinkId, graphLevel]);
 
+  // ---- Decide what hint to show ----
+  // At modules/lessons level edges = shared terms between nodes. If there are
+  // nodes but no edges the user hasn't collected bindings yet (or has 0 terms).
+  // At terms level there's always a centre hub — no hint needed there.
+  const showNoLinksHint = graphLevel !== 'terms' && nodeCount > 0 && linkCount === 0;
+  const showNoDataHint  = nodeCount === 0 && !!activeCourse;
+
   return (
     <div ref={containerRef} className="relative h-full w-full">
       <div className="graph-grid absolute inset-0" />
       <svg ref={svgRef} className="relative z-10 h-full w-full" />
+
+      {/* Empty-state overlay — only visible when there are no links */}
+      {(showNoLinksHint || showNoDataHint) && (
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+          <div
+            className="mx-auto max-w-sm rounded border px-6 py-5 text-center shadow-sm"
+            style={{
+              backgroundColor: 'var(--lw-bg-panel)',
+              borderColor: 'var(--lw-border-primary)',
+              opacity: 0.97,
+            }}
+          >
+            {showNoDataHint ? (
+              <>
+                <p className="mb-1 text-sm font-semibold" style={{ color: 'var(--lw-text-primary)' }}>
+                  Нет данных для отображения
+                </p>
+                <p className="text-xs leading-relaxed" style={{ color: 'var(--lw-text-muted)' }}>
+                  Откройте курс с импортированной структурой модулей и уроков.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="mb-2 text-sm font-semibold" style={{ color: 'var(--lw-text-primary)' }}>
+                  Связи не отображаются
+                </p>
+                <p className="mb-3 text-xs leading-relaxed" style={{ color: 'var(--lw-text-secondary)' }}>
+                  Рёбра на схеме строятся по общим терминам между{' '}
+                  {graphLevel === 'modules' ? 'модулями' : 'уроками'}.
+                  Сейчас в глоссарии {allTerms.length === 0 ? 'нет терминов' : 'нет привязок к шагам'}.
+                </p>
+                <div
+                  className="rounded px-3 py-2.5 text-left"
+                  style={{ backgroundColor: 'var(--lw-bg-hover)' }}
+                >
+                  <p className="mb-1.5 text-xs font-medium" style={{ color: 'var(--lw-text-secondary)' }}>
+                    Как получить связи:
+                  </p>
+                  <ol className="list-inside list-decimal space-y-1 text-xs" style={{ color: 'var(--lw-text-muted)' }}>
+                    {allTerms.length === 0 && (
+                      <li>Перейдите на вкладку <strong style={{ color: 'var(--lw-text-secondary)' }}>«+ Добавить»</strong> и введите термины курса</li>
+                    )}
+                    <li>В списке терминов <strong style={{ color: 'var(--lw-text-secondary)' }}>отметьте их чекбоксами</strong></li>
+                    <li>Нажмите <strong style={{ color: 'var(--lw-accent-amber)' }}>«Собрать данные для глоссария»</strong></li>
+                    <li>Связи появятся автоматически</li>
+                  </ol>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

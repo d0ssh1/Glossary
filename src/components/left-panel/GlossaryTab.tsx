@@ -81,6 +81,24 @@ export default function GlossaryTab() {
 
   return (
     <div className="relative flex h-full flex-col">
+      {/* Onboarding banner — shown only when the glossary is empty */}
+      {terms.length === 0 && (
+        <div
+          className="mx-3 mt-3 mb-1 rounded border-l-2 px-3 py-2.5"
+          style={{
+            borderLeftColor: 'var(--lw-accent-amber)',
+            backgroundColor: 'color-mix(in srgb, var(--lw-accent-amber) 8%, var(--lw-bg-panel))',
+          }}
+        >
+          <p className="mb-1 text-xs font-semibold" style={{ color: 'var(--lw-text-primary)' }}>
+            Глоссарий пуст
+          </p>
+          <p className="mb-1.5 text-xs leading-relaxed" style={{ color: 'var(--lw-text-secondary)' }}>
+            Перейдите на вкладку <strong>«+ Добавить»</strong>, введите термины курса, затем вернитесь сюда, отметьте их и нажмите <strong>«Собрать данные»</strong> — на схеме появятся связи.
+          </p>
+        </div>
+      )}
+
       {/* Total count */}
       <div className="px-4 pt-3 pb-2">
         <p className="text-xs font-medium" style={{ color: 'var(--lw-text-secondary)' }}>
