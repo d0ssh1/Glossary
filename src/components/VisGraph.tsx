@@ -231,12 +231,26 @@ export default function VisGraph() {
 
   // ── Light effect: update selection highlight without full rebuild ───────────
   useEffect(() => {
-    if (!networkRef.current) return;
-    networkRef.current.unselectAll();
-    if (activeNodeId) {
-      networkRef.current.selectNodes([activeNodeId], false);
-    } else if (activeLinkId) {
-      networkRef.current.selectEdges([activeLinkId]);
+    const net = networkRef.current;
+    if (!net) return;
+    // vis-network throws a RangeError if you select an id that isn't in the
+    // current graph. After a drill-down the active node/edge id usually belongs
+    // to the PREVIOUS level (e.g. selected module "m2" then drilled into it),
+    // so we must guard against ids that no longer exist — otherwise the throw
+    // bubbles out of the effect and unmounts the whole app (white screen).
+    // `body` is internal and not in vis-network's public typings.
+    const body = (net as unknown as { body?: { nodes: Record<string, unknown>; edges: Record<string, unknown> } }).body;
+    try {
+      net.unselectAll();
+      const nodeIds = body?.nodes ?? {};
+      const edgeIds = body?.edges ?? {};
+      if (activeNodeId && nodeIds[activeNodeId]) {
+        net.selectNodes([activeNodeId], false);
+      } else if (activeLinkId && edgeIds[activeLinkId]) {
+        net.selectEdges([activeLinkId]);
+      }
+    } catch {
+      /* stale selection id — ignore */
     }
   }, [activeNodeId, activeLinkId]);
 

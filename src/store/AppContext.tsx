@@ -190,7 +190,10 @@ export function appReducer(state: AppState, action: Action): AppState {
       } else {
         newBreadcrumbs = [...state.breadcrumbs, newItem];
       }
-      return { ...state, graphLevel: action.level, breadcrumbs: newBreadcrumbs, activeNodeId: action.nodeId };
+      // Clear node/edge selection: the drilled id belongs to the PARENT level,
+      // it isn't a node in the child graph (selecting it would be meaningless
+      // and made vis-network throw). The drilled node lives in breadcrumbs.
+      return { ...state, graphLevel: action.level, breadcrumbs: newBreadcrumbs, activeNodeId: null, activeLinkId: null };
     }
     case 'BREADCRUMB_NAV': {
       const target = state.breadcrumbs[action.index];
@@ -199,7 +202,8 @@ export function appReducer(state: AppState, action: Action): AppState {
         ...state,
         graphLevel: target.level,
         breadcrumbs: state.breadcrumbs.slice(0, action.index + 1),
-        activeNodeId: target.id,
+        activeNodeId: null,
+        activeLinkId: null,
         activeTermId: null,
       };
     }
