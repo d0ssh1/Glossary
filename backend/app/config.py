@@ -29,5 +29,10 @@ class Settings(BaseSettings):
     stepik_api_base: str = "https://stepik.org/api"
     stepik_oauth_url: str = "https://stepik.org/oauth2/token/"
 
+    # CoreApp (coreapp.ai) — no public API, access via the logged-in session
+    # cookie ``token``. Used by app.services.coreapp for source=coreapp imports.
+    coreapp_token: str = ""
+    coreapp_base: str = "https://coreapp.ai"
+
 
 settings = Settings()
