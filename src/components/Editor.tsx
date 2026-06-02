@@ -13,6 +13,7 @@ import { MOBILE_BREAKPOINT, PANEL_WIDTH } from '@/lib/constants';
 import Toolbar from './Toolbar';
 import LeftPanel from './left-panel';
 import RightPanel from './right-panel';
+import VisGraph from './VisGraph';
 import D3Graph from './D3Graph';
 
 export default function Editor() {
@@ -77,8 +78,8 @@ export default function Editor() {
               )}
             </div>
 
-            <div className="relative min-w-0 flex-1">
-              <D3Graph />
+            <div className="flex-1 min-h-0 bg-[#F5F5F5] relative overflow-hidden">
+              <VisGraph />
             </div>
 
             <div

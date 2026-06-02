@@ -129,7 +129,6 @@ function norm(name: string): string {
  * when connections haven't been populated (e.g. before "Собрать данные").
  */
 function termInModule(t: Term, moduleId: string, scope?: Set<string> | null): boolean {
-  // A binding counts only if its lesson is in scope (hierarchy selection).
   if (t.connections.some(c => c.moduleId === moduleId && (!scope || scope.has(c.lessonId)))) return true;
   return t.moduleId === moduleId && (!scope || (!!t.lessonId && scope.has(t.lessonId)));
 }
@@ -178,17 +177,14 @@ function buildLessonOrder(course: Course): Map<string, number> {
 /**
  * Modules level: one node per module, edges weighted by the number of shared
  * terms (by name) between each pair. Pairs with zero shared terms get no edge.
- * Heavier edges → thicker line (rendered by D3Graph via `weight`); d3-force
- * naturally pulls hubs (modules with many incident edges) toward the centre.
+ * Heavier edges → thicker line; d3/vis-network naturally pulls hubs toward
+ * the centre.
  */
 function buildModulesGraph(course: Course, allTerms: Term[], scope: Set<string> | null) {
   const nodes: GraphNode[] = course.modules.map(m => ({
     id: m.id, name: m.name, type: 'module',
   }));
 
-  // Pre-bucket terms by module via real bindings — one term can appear in
-  // many modules at once (different steps), so we cross-list it rather than
-  // bucketing by the single `t.moduleId` home field.
   const termsByModule = new Map<string, Term[]>();
   for (const m of course.modules) termsByModule.set(m.id, []);
   for (const t of allTerms) {
@@ -221,8 +217,7 @@ function buildModulesGraph(course: Course, allTerms: Term[], scope: Set<string> 
 
 /**
  * Lessons level (drilled into one module): one node per lesson, edges weighted
- * by shared terms between each pair of lessons in that module. Same colour
- * convention as modules level — thickness/intensity scales with the weight.
+ * by shared terms between each pair of lessons in that module.
  */
 function buildLessonsGraph(course: Course, allTerms: Term[], drillModuleId: string | undefined, scope: Set<string> | null) {
   const mod = course.modules.find(m => m.id === drillModuleId) || course.modules[0];
@@ -235,8 +230,6 @@ function buildLessonsGraph(course: Course, allTerms: Term[], drillModuleId: stri
   const termsByLesson = new Map<string, Term[]>();
   for (const l of mod.lessons) termsByLesson.set(l.id, []);
   for (const t of allTerms) {
-    // A term participates in this module's lessons-level graph if any of its
-    // bindings live in the module — not just if its "home lesson" is here.
     if (!termInModule(t, mod.id, scope)) continue;
     for (const l of mod.lessons) {
       if (termInLesson(t, l.id, scope)) termsByLesson.get(l.id)!.push(t);
@@ -268,10 +261,9 @@ function buildLessonsGraph(course: Course, allTerms: Term[], drillModuleId: stri
 /**
  * Terms level (drilled into one lesson): central lesson hub + a node per term
  * belonging to the lesson. Link colour distinguishes first-appearance (black)
- * vs later mention (grey) — derived from the term's `occurrences[]`. If the
- * current lesson is the earliest lesson in the course where the term shows up,
- * the link is 'first-appearance'; otherwise 'mention'. Terms with no
- * occurrences fall back to first-appearance (they're declared right here).
+ * vs later mention (grey). If the current lesson is the earliest lesson in the
+ * course where the term shows up, the link is 'first-appearance'; otherwise
+ * 'mention'. Terms with no occurrences fall back to first-appearance.
  */
 function buildTermsGraph(
   course: Course,
@@ -287,9 +279,7 @@ function buildTermsGraph(
 
   const lessonOrder = buildLessonOrder(course);
   const currentPos = lessonOrder.get(lesson.id) ?? Number.MAX_SAFE_INTEGER;
-  // Pick terms by any binding in this lesson. The user drilled into this lesson
-  // deliberately, so ignore the hierarchy scope for membership here (scope only
-  // gates the cross-lesson first-appearance check below).
+  // Pick terms by any binding in this lesson.
   void scope;
   const lessonTerms = allTerms.filter(t => termInLesson(t, lesson.id));
   const centerId = `center-${lesson.id}`;
@@ -299,7 +289,6 @@ function buildTermsGraph(
   //  - the term's "home" lesson field (legacy primary-binding pointer)
   //  - every binding/connection lessonId (true cross-module presence)
   //  - any populated occurrences[] (after the modal lazy-fetches them)
-  // The minimum across all of these is the term's first-appearance position.
   const earliestByName = new Map<string, number>();
   for (const t of allTerms) {
     const key = norm(t.name);
