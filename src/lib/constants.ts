@@ -10,11 +10,19 @@ export const statusDotClass: Record<TermStatus, string> = {
   'ready': 'bg-[var(--lw-success)]',
 };
 
-/** Raw hex colors for D3/SVG. */
+/** Raw hex colors for graph term nodes (editor). */
 export const statusHex: Record<TermStatus, string> = {
   'no-trait': '#C0635F',
   'in-progress': '#D98C45',
   'ready': '#7E9E7C',
+};
+
+/** Term node colors for the published SCORM view — a distinct cool palette so
+ *  the read-only export reads differently from the editing app. */
+export const scormStatusHex: Record<TermStatus, string> = {
+  'no-trait': '#8A8FB0',
+  'in-progress': '#4F86C6',
+  'ready': '#3F9E8C',
 };
 
 export const linkHex = {

@@ -6,7 +6,7 @@ import { Network } from 'vis-network';
 import { DataSet } from 'vis-data';
 import { useApp } from '@/store/AppContext';
 import { buildGraphData } from '@/lib/graphData';
-import { statusHex, linkHex } from '@/lib/constants';
+import { statusHex, scormStatusHex, linkHex } from '@/lib/constants';
 import { contextKey, loadPositions, savePositions } from '@/lib/nodePositions';
 import type { GraphNode, GraphLink, GraphLevel } from '@/types';
 
@@ -27,8 +27,10 @@ export default function VisGraph() {
   const {
     graphLevel, activeNodeId, activeLinkId,
     activeGlossaryId, activeCourseId, breadcrumbs,
-    courses, hierFilterIds, graphFilters, selectedTermIds,
+    courses, hierFilterIds, graphFilters, selectedTermIds, readOnly,
   } = state;
+  // Published SCORM view uses a distinct cool term palette.
+  const termPalette = readOnly ? scormStatusHex : statusHex;
 
   const activeCourse = courses.find(c => c.id === activeCourseId);
   const activeGlossary = courses
@@ -84,7 +86,7 @@ export default function VisGraph() {
         const borderColor = isActive
           ? '#D4A056'
           : isTerm
-            ? statusHex[n.status || 'no-trait']
+            ? termPalette[n.status || 'no-trait']
             : isCenter ? '#D4A056' : '#E0DFDA';
 
         return {

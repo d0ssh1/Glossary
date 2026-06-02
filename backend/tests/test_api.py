@@ -115,14 +115,20 @@ def test_scorm_zip(client: TestClient) -> None:
     with zipfile.ZipFile(buf) as zf:
         names = set(zf.namelist())
         assert "imsmanifest.xml" in names
-        assert "data.json" in names
         assert "index.html" in names
+        # The package ships the real app read-only: a data script + SCORM shim.
+        assert "scorm-data.js" in names
+        assert "scorm-api.js" in names
         manifest = zf.read("imsmanifest.xml").decode("utf-8")
         assert "<schemaversion>1.2</schemaversion>" in manifest
+        # index.html must load our injected scripts before the app bundle.
         index_html = zf.read("index.html").decode("utf-8")
-        assert "vis-network" in index_html
-        data = json.loads(zf.read("data.json").decode("utf-8"))
-        assert data["glossary"]["title"] == "G"
+        assert "scorm-data.js" in index_html
+        # The injected data exposes the glossary in the front-end adapter shape.
+        data_js = zf.read("scorm-data.js").decode("utf-8")
+        assert "__LW_GLOSSARY__" in data_js
+        payload = json.loads(data_js.split("window.__LW_GLOSSARY__ =", 1)[1].rsplit(";", 1)[0].strip())
+        assert payload["glossaries"][0]["title"] == "G"
 
 
 def test_binding_duplicate_409(client: TestClient) -> None:

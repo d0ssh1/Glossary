@@ -14,7 +14,7 @@ const STATUS_FILTERS: { value: FilterStatus; label: string; color?: string }[] =
 
 export default function GlossaryTab() {
   const { state, dispatch } = useApp();
-  const { filterStatus, searchTerm, selectedTermIds, hierFilterIds } = state;
+  const { filterStatus, searchTerm, selectedTermIds, hierFilterIds, readOnly } = state;
   const [expandedLetters, setExpandedLetters] = useState<Record<string, boolean>>({});
   const { apiCollectBindings } = useApi();
   const [collecting, setCollecting] = useState(false);
@@ -73,7 +73,9 @@ export default function GlossaryTab() {
     [groupedTerms],
   );
   const isAllSelected = allFilteredIds.length > 0 && allFilteredIds.every(id => selectedTermIds.includes(id));
-  const hasSelection = selectedTermIds.length > 0;
+  // The "Собрать данные" action bar is an editing affordance — hidden in the
+  // read-only SCORM view (term selection itself still drives graph filtering).
+  const hasSelection = selectedTermIds.length > 0 && !readOnly;
 
   const toggleLetter = (letter: string) => {
     setExpandedLetters(prev => ({ ...prev, [letter]: !prev[letter] }));

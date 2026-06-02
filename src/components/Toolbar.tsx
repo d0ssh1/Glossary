@@ -36,17 +36,19 @@ export default function Toolbar() {
       className="flex h-12 items-center border-b px-4"
       style={{ backgroundColor: 'var(--lw-bg-panel)', borderColor: 'var(--lw-border-primary)' }}
     >
-      {/* Home */}
-      <button
-        onClick={handleHome}
-        className="mr-3 shrink-0 rounded p-1.5 transition-colors duration-200"
-        style={{ color: 'var(--lw-text-secondary)' }}
-        title="Возвращает на главный экран"
-        onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--lw-bg-hover)'; e.currentTarget.style.color = 'var(--lw-text-primary)'; }}
-        onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--lw-text-secondary)'; }}
-      >
-        <Home size={18} />
-      </button>
+      {/* Home — hidden in the read-only SCORM view (there's no dashboard there). */}
+      {!state.readOnly && (
+        <button
+          onClick={handleHome}
+          className="mr-3 shrink-0 rounded p-1.5 transition-colors duration-200"
+          style={{ color: 'var(--lw-text-secondary)' }}
+          title="Возвращает на главный экран"
+          onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--lw-bg-hover)'; e.currentTarget.style.color = 'var(--lw-text-primary)'; }}
+          onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--lw-text-secondary)'; }}
+        >
+          <Home size={18} />
+        </button>
+      )}
 
       {/* Left toggle */}
       <button

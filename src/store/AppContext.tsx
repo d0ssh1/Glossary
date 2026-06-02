@@ -19,6 +19,7 @@ import {
   getOccurrences as apiGetOccurrencesRaw,
 } from '@/lib/api';
 import { mapCourseFull, stringIdToNumeric, numericToId, mapOccurrences } from '@/lib/apiAdapter';
+import { getScormPayload, isScormMode } from '@/lib/scorm';
 
 /** Filter set lifted out of FiltersTab so the graph renderer can react to it. */
 export type FrequencyMode = 'all' | 'first-appearance' | 'mention';
@@ -68,6 +69,8 @@ interface AppState {
   syncProgress: number;
   syncStatus: string;
   syncReport: SyncReport | null;
+  /** SCORM player mode: the app is a read-only published view (no editing). */
+  readOnly: boolean;
 }
 
 const initialState: AppState = {
@@ -96,7 +99,29 @@ const initialState: AppState = {
   syncProgress: 0,
   syncStatus: '',
   syncReport: null,
+  readOnly: false,
 };
+
+/**
+ * Lazy reducer initializer. In a SCORM package the backend injects the glossary
+ * data into `window.__LW_GLOSSARY__`; when present we boot straight into the
+ * read-only editor for that glossary (same UI, no dashboard, no editing).
+ */
+function makeInitialState(): AppState {
+  const payload = getScormPayload();
+  if (!payload) return initialState;
+  const course = mapCourseFull(payload.course, payload.glossaries);
+  return {
+    ...initialState,
+    screen: 'editor',
+    readOnly: true,
+    courses: [course],
+    activeCourseId: course.id,
+    activeGlossaryId: numericToId('g', payload.activeGlossaryId),
+    graphLevel: 'modules',
+    breadcrumbs: [{ id: course.id, name: course.name, level: 'modules' }],
+  };
+}
 
 // --- Actions ---
 type Action =
@@ -320,9 +345,11 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(appReducer, initialState);
+  const [state, dispatch] = useReducer(appReducer, undefined, makeInitialState);
 
   useEffect(() => {
+    // SCORM package: data is injected, never fetched.
+    if (isScormMode()) return;
     if (!apiEnabled()) return;
     let cancelled = false;
     (async () => {

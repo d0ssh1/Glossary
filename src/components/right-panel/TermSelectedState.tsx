@@ -8,7 +8,8 @@ import type { Term } from '@/types';
 interface Props { term: Term }
 
 export default function TermSelectedState({ term }: Props) {
-  const { dispatch } = useApp();
+  const { state, dispatch } = useApp();
+  const { readOnly } = state;
   const { apiUpdateTerm } = useApi();
   const [editingName, setEditingName] = useState(false);
   const [nameValue, setNameValue] = useState(term.name);
@@ -45,7 +46,11 @@ export default function TermSelectedState({ term }: Props) {
       {/* Header */}
       <div className="border-b px-4 py-3" style={{ borderColor: 'var(--lw-border-primary)' }}>
         <div className="flex items-center justify-between gap-2">
-          {editingName ? (
+          {readOnly ? (
+            <h3 className="flex-1 truncate text-sm font-semibold" style={{ color: 'var(--lw-text-primary)' }}>
+              {term.name}
+            </h3>
+          ) : editingName ? (
             <input
               value={nameValue}
               onChange={e => {
@@ -68,16 +73,18 @@ export default function TermSelectedState({ term }: Props) {
               {term.name}
             </button>
           )}
-          <button
-            onClick={handleDelete}
-            className="rounded p-1 transition-colors duration-200"
-            style={{ color: 'var(--lw-error)' }}
-            onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--lw-bg-hover)'; }}
-            onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-            aria-label="Удалить термин"
-          >
-            <Trash2 size={14} />
-          </button>
+          {!readOnly && (
+            <button
+              onClick={handleDelete}
+              className="rounded p-1 transition-colors duration-200"
+              style={{ color: 'var(--lw-error)' }}
+              onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--lw-bg-hover)'; }}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+              aria-label="Удалить термин"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
         <p className="mt-1 text-xs" style={{ color: 'var(--lw-text-muted)' }}>
           {statusLabel[term.status]}
@@ -87,17 +94,26 @@ export default function TermSelectedState({ term }: Props) {
       {/* Definition */}
       <div className="border-b px-4 py-3" style={{ borderColor: 'var(--lw-border-primary)' }}>
         <p className="mb-1.5 text-xs font-medium" style={{ color: 'var(--lw-text-secondary)' }}>Определение:</p>
-        <textarea
-          value={definition}
-          onChange={e => {
-            setDefinition(e.target.value);
-            dispatch({ type: 'SET_UNSAVED_CHANGES', value: true });
-          }}
-          rows={4}
-          className="w-full resize-none rounded border px-2.5 py-2 text-xs outline-none"
-          style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)', color: 'var(--lw-text-primary)' }}
-          placeholder="Введите определение термина..."
-        />
+        {readOnly ? (
+          <p
+            className="min-h-[2rem] whitespace-pre-wrap rounded border px-2.5 py-2 text-xs"
+            style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)', color: definition ? 'var(--lw-text-primary)' : 'var(--lw-text-muted)' }}
+          >
+            {definition || 'Определение не задано'}
+          </p>
+        ) : (
+          <textarea
+            value={definition}
+            onChange={e => {
+              setDefinition(e.target.value);
+              dispatch({ type: 'SET_UNSAVED_CHANGES', value: true });
+            }}
+            rows={4}
+            className="w-full resize-none rounded border px-2.5 py-2 text-xs outline-none"
+            style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)', color: 'var(--lw-text-primary)' }}
+            placeholder="Введите определение термина..."
+          />
+        )}
       </div>
 
       {/* Occurrences button + connections */}
@@ -125,22 +141,24 @@ export default function TermSelectedState({ term }: Props) {
               {connectionsCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
               Связи:
             </button>
-            <button
-              onClick={() => setShowLinkEditor(v => !v)}
-              className="rounded p-1 transition-colors duration-200"
-              style={{ color: showLinkEditor ? 'var(--lw-accent-amber)' : 'var(--lw-text-muted)' }}
-              title={showLinkEditor ? 'Закрыть редактор связей' : 'Редактировать связи'}
-              onMouseEnter={e => { e.currentTarget.style.color = 'var(--lw-accent-amber)'; }}
-              onMouseLeave={e => { e.currentTarget.style.color = showLinkEditor ? 'var(--lw-accent-amber)' : 'var(--lw-text-muted)'; }}
-            >
-              <Pencil size={12} />
-            </button>
+            {!readOnly && (
+              <button
+                onClick={() => setShowLinkEditor(v => !v)}
+                className="rounded p-1 transition-colors duration-200"
+                style={{ color: showLinkEditor ? 'var(--lw-accent-amber)' : 'var(--lw-text-muted)' }}
+                title={showLinkEditor ? 'Закрыть редактор связей' : 'Редактировать связи'}
+                onMouseEnter={e => { e.currentTarget.style.color = 'var(--lw-accent-amber)'; }}
+                onMouseLeave={e => { e.currentTarget.style.color = showLinkEditor ? 'var(--lw-accent-amber)' : 'var(--lw-text-muted)'; }}
+              >
+                <Pencil size={12} />
+              </button>
+            )}
           </div>
 
-          {showLinkEditor && (
+          {!readOnly && showLinkEditor && (
             <LinkEditor term={term} onClose={() => setShowLinkEditor(false)} />
           )}
-          {!showLinkEditor && !connectionsCollapsed && (
+          {(readOnly || !showLinkEditor) && !connectionsCollapsed && (
             <div className="space-y-1">
               {term.connections.map(conn => (
                 <div key={conn.id} className="rounded px-2 py-1.5 text-xs" style={{ backgroundColor: 'var(--lw-bg-primary)' }}>
@@ -167,7 +185,7 @@ export default function TermSelectedState({ term }: Props) {
         </div>
       </div>
 
-      {hasChanges && (
+      {hasChanges && !readOnly && (
         <div className="border-t px-4 py-3" style={{ borderColor: 'var(--lw-border-primary)' }}>
           <button
             onClick={handleSave}

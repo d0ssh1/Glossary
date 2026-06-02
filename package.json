@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host",
     "build": "tsc -b && vite build",
+    "build:scorm": "npm run build && node scripts/build-scorm-player.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
