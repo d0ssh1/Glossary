@@ -43,6 +43,17 @@ export default function LinkSelectedState() {
       t.connections.some(c => c.moduleId === mid) || t.moduleId === mid;
     const inLesson = (t: Term, lid: string) =>
       t.connections.some(c => c.lessonId === lid) || t.lessonId === lid;
+    const inStep = (t: Term, sid: string) =>
+      t.connections.some(c => c.stepId === sid);
+
+    const findStep = (sid: string) => {
+      for (const m of activeCourse.modules)
+        for (const l of m.lessons) {
+          const s = l.steps.find(x => x.id === sid);
+          if (s) return s;
+        }
+      return undefined;
+    };
 
     const resolve = (nodeId: string): { name: string; terms: Term[] } => {
       if (graphLevel === 'modules') {
@@ -56,11 +67,19 @@ export default function LinkSelectedState() {
         }
         return { name: nodeId, terms: [] };
       }
+      if (graphLevel === 'steps') {
+        const s = findStep(nodeId);
+        if (s) return { name: s.name, terms: allTerms.filter(t => inStep(t, nodeId)) };
+        return { name: nodeId, terms: [] };
+      }
+      // terms level — the centre hub is a step (or lesson) prefixed with "center-".
       if (nodeId.startsWith('center-')) {
-        const lessonId = nodeId.replace(/^center-/, '');
+        const baseId = nodeId.replace(/^center-/, '');
+        const s = findStep(baseId);
+        if (s) return { name: s.name, terms: allTerms.filter(t => inStep(t, baseId)) };
         for (const m of activeCourse.modules) {
-          const l = m.lessons.find(x => x.id === lessonId);
-          if (l) return { name: l.name, terms: allTerms.filter(t => inLesson(t, lessonId)) };
+          const l = m.lessons.find(x => x.id === baseId);
+          if (l) return { name: l.name, terms: allTerms.filter(t => inLesson(t, baseId)) };
         }
         return { name: nodeId, terms: [] };
       }

@@ -8,10 +8,10 @@ export default function NodeSelectedState() {
   const { state, dispatch } = useApp();
   const { apiSetFtsIndexed } = useApi();
   const { activeNodeId, graphLevel, courses, activeGlossaryId, activeCourseId, breadcrumbs } = state;
-  // On the terms-level the "selected node" is actually the lesson hub —
-  // derived from the breadcrumb that initiated this drill-down. Used to scope
-  // both the title/FTS toggle and the term list.
-  const lessonDrillId = breadcrumbs.find(b => b.level === 'terms')?.id ?? null;
+  // On the terms-level the "selected node" is actually the centre hub (a step,
+  // or a lesson when no step was drilled into) — derived from the breadcrumb
+  // that initiated this drill-down. Used to scope title and the term list.
+  const stepDrillId = breadcrumbs.find(b => b.level === 'terms')?.id ?? null;
   const [nodeSearch, setNodeSearch] = useState('');
   const [allExpanded, setAllExpanded] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -20,48 +20,62 @@ export default function NodeSelectedState() {
   const terms = activeGlossary?.terms || [];
   const activeCourse = courses.find(c => c.id === activeCourseId);
 
-  // Resolve the selected node — title and current FTS-indexed flag (the FTS
-  // toggle isn't shown on terms-level since terms don't carry the flag).
+  // Resolve the selected node — title + FTS-indexed flag. Only module/lesson
+  // expose an FTS toggle (`togglable`); steps/terms don't.
   const nodeInfo = useMemo(() => {
     if (!activeCourse) return null;
     if (graphLevel === 'modules' && activeNodeId) {
       const m = activeCourse.modules.find(x => x.id === activeNodeId);
-      return m ? { name: m.name, type: 'module' as const, indexed: m.isIndexed ?? true } : null;
+      return m ? { name: m.name, toggleType: 'module' as const, indexed: m.isIndexed ?? true, togglable: true } : null;
     }
     if (graphLevel === 'lessons' && activeNodeId) {
       for (const m of activeCourse.modules) {
         const l = m.lessons.find(x => x.id === activeNodeId);
-        if (l) return { name: l.name, type: 'lesson' as const, indexed: l.isIndexed ?? true };
+        if (l) return { name: l.name, toggleType: 'lesson' as const, indexed: l.isIndexed ?? true, togglable: true };
       }
     }
-    // terms-level: scope to the drilled lesson (kept in breadcrumbs, not activeNodeId
-    // because activeNodeId on terms-level holds the *term* selection state).
-    if (graphLevel === 'terms' && lessonDrillId) {
+    // steps-level: the selected node is a step (no FTS toggle).
+    if (graphLevel === 'steps' && activeNodeId) {
+      for (const m of activeCourse.modules)
+        for (const l of m.lessons) {
+          const s = l.steps.find(x => x.id === activeNodeId);
+          if (s) return { name: s.name, toggleType: null, indexed: true, togglable: false };
+        }
+    }
+    // terms-level: title comes from the drilled step (or lesson) in breadcrumbs.
+    if (graphLevel === 'terms' && stepDrillId) {
       for (const m of activeCourse.modules) {
-        const l = m.lessons.find(x => x.id === lessonDrillId);
-        if (l) return { name: l.name, type: 'lesson' as const, indexed: l.isIndexed ?? true };
+        for (const l of m.lessons) {
+          const s = l.steps.find(x => x.id === stepDrillId);
+          if (s) return { name: s.name, toggleType: null, indexed: true, togglable: false };
+        }
+        const l = m.lessons.find(x => x.id === stepDrillId);
+        if (l) return { name: l.name, toggleType: null, indexed: true, togglable: false };
       }
     }
     return null;
-  }, [activeCourse, activeNodeId, graphLevel, lessonDrillId]);
+  }, [activeCourse, activeNodeId, graphLevel, stepDrillId]);
 
   const nodeTerms = useMemo(() => {
-    // Match against real bindings (term.connections) — a term can live in
-    // multiple modules/lessons via different steps. Fall back to the legacy
+    // Match against real bindings (term.connections). Fall back to the legacy
     // moduleId/lessonId home-field when bindings haven't been collected yet.
     const inModule = (t: typeof terms[number], mid: string) =>
       t.connections.some(c => c.moduleId === mid) || t.moduleId === mid;
     const inLesson = (t: typeof terms[number], lid: string) =>
       t.connections.some(c => c.lessonId === lid) || t.lessonId === lid;
+    const inStep = (t: typeof terms[number], sid: string) =>
+      t.connections.some(c => c.stepId === sid);
     return terms
       .filter(t => {
         if (graphLevel === 'modules' && activeNodeId) return inModule(t, activeNodeId);
         if (graphLevel === 'lessons' && activeNodeId) return inLesson(t, activeNodeId);
-        if (graphLevel === 'terms' && lessonDrillId) return inLesson(t, lessonDrillId);
+        if (graphLevel === 'steps' && activeNodeId) return inStep(t, activeNodeId);
+        // terms-level: scope to the drilled step (or lesson fallback).
+        if (graphLevel === 'terms' && stepDrillId) return inStep(t, stepDrillId) || inLesson(t, stepDrillId);
         return true;
       })
       .filter(t => !nodeSearch.trim() || t.name.toLowerCase().includes(nodeSearch.toLowerCase()));
-  }, [terms, graphLevel, activeNodeId, lessonDrillId, nodeSearch]);
+  }, [terms, graphLevel, activeNodeId, stepDrillId, nodeSearch]);
 
   const grouped = useMemo(() => {
     const g: Record<string, Term[]> = {};
@@ -82,8 +96,8 @@ export default function NodeSelectedState() {
   };
 
   const handleToggleIndexed = () => {
-    if (!nodeInfo || !activeNodeId) return;
-    apiSetFtsIndexed(nodeInfo.type, activeNodeId, !nodeInfo.indexed);
+    if (!nodeInfo || !activeNodeId || !nodeInfo.togglable || !nodeInfo.toggleType) return;
+    apiSetFtsIndexed(nodeInfo.toggleType, activeNodeId, !nodeInfo.indexed);
   };
 
   return (
@@ -94,15 +108,17 @@ export default function NodeSelectedState() {
           <h3 className="text-sm font-semibold leading-snug" style={{ color: 'var(--lw-text-primary)' }}>
             {nodeInfo.name}
           </h3>
-          <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs" style={{ color: 'var(--lw-text-secondary)' }}>
-            <input
-              type="checkbox"
-              checked={nodeInfo.indexed}
-              onChange={handleToggleIndexed}
-              className="h-3.5 w-3.5 cursor-pointer accent-[var(--lw-accent-amber)]"
-            />
-            <span>Участвует в поиске FTS (Индексировать)</span>
-          </label>
+          {nodeInfo.togglable && (
+            <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs" style={{ color: 'var(--lw-text-secondary)' }}>
+              <input
+                type="checkbox"
+                checked={nodeInfo.indexed}
+                onChange={handleToggleIndexed}
+                className="h-3.5 w-3.5 cursor-pointer accent-[var(--lw-accent-amber)]"
+              />
+              <span>Участвует в поиске FTS (Индексировать)</span>
+            </label>
+          )}
         </div>
       )}
 

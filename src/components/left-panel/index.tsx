@@ -25,7 +25,7 @@ export default function LeftPanel() {
               color: leftTab === tab ? 'var(--lw-text-primary)' : 'var(--lw-text-muted)',
             }}
           >
-            {tab === 'glossary' ? 'Глоссарий' : 'добавление'}
+            {tab === 'glossary' ? 'Глоссарий' : 'Добавление'}
           </button>
         ))}
       </div>

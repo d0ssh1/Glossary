@@ -30,7 +30,7 @@ export default function RightPanel() {
         ))}
       </div>
 
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden min-h-0">
         {rightTab === 'context' ? <ContextTab /> : <FiltersTab />}
       </div>
     </div>

@@ -14,7 +14,6 @@ import Toolbar from './Toolbar';
 import LeftPanel from './left-panel';
 import RightPanel from './right-panel';
 import VisGraph from './VisGraph';
-import D3Graph from './D3Graph';
 
 export default function Editor() {
   const { state, dispatch } = useApp();
@@ -102,7 +101,7 @@ export default function Editor() {
         {isMobile && (
           <>
             <div className="relative h-full w-full min-w-0">
-              <D3Graph />
+              <VisGraph />
             </div>
 
             {/* Backdrop for any open drawer */}

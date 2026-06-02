@@ -99,7 +99,7 @@ export default function LinkEditor({ term, onClose }: LinkEditorProps) {
         const s = l.steps.find(st => st.id === stepId);
         if (s) {
           return {
-            stepName: s.name,
+            stepName: s.name || `Шаг ${s.id.split('-')[1] || s.id}`,
             moduleId: m.id, moduleName: m.name,
             lessonId: l.id, lessonName: l.name,
           };

@@ -18,10 +18,13 @@ export default function Toolbar() {
     dispatch({ type: 'SET_ACTIVE_COURSE', courseId: null });
   };
 
+  // A crumb's `level` is the level it leads INTO, so its own noun is the parent
+  // of that level: modules→course, lessons→module, steps→lesson, terms→step.
   const levelLabels: Record<string, string> = {
     modules: 'Курс',
     lessons: 'Модуль',
-    terms: 'Урок',
+    steps: 'Урок',
+    terms: 'Шаг',
   };
 
   const activeGlossary = state.courses
@@ -61,8 +64,8 @@ export default function Toolbar() {
       <div className="mx-2 h-5 w-px" style={{ backgroundColor: 'var(--lw-border-primary)' }} />
 
       {/* Breadcrumbs */}
-      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-sm">
-        <span className="hidden truncate font-medium sm:inline" style={{ color: 'var(--lw-text-primary)' }}>
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-base">
+        <span className="hidden truncate font-semibold sm:inline" style={{ color: 'var(--lw-text-primary)' }}>
           {activeGlossary?.name || 'Глоссарий'}
         </span>
         {breadcrumbs.length > 0 && (
@@ -79,7 +82,7 @@ export default function Toolbar() {
                   {i > 0 && <ChevronRight size={12} className="shrink-0" style={{ color: 'var(--lw-text-muted)' }} />}
                   <button
                     onClick={() => handleBreadcrumbClick(i)}
-                    className="truncate rounded px-1 py-0.5 text-xs font-medium transition-colors duration-200"
+                    className="truncate rounded px-1.5 py-0.5 text-sm font-medium transition-colors duration-200"
                     style={{
                       color: isLast ? 'var(--lw-accent-amber)' : 'var(--lw-text-secondary)',
                       backgroundColor: 'transparent',

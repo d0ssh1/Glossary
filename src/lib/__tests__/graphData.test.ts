@@ -141,3 +141,51 @@ describe('buildGraphData', () => {
     expect(out.nodes.map(n => n.id).sort()).toEqual(['m1', 'm2']);
   });
 });
+
+describe('buildGraphData — step level', () => {
+  function mkCourseWithSteps(): Course {
+    return {
+      id: 'c1', name: 'C', url: '', lastImportDate: null, glossaries: [],
+      modules: [{
+        id: 'm1', name: 'M1', courseId: 'c1',
+        lessons: [{
+          id: 'l1', name: 'L1', moduleId: 'm1',
+          steps: [
+            { id: 's1', name: 'Шаг 1', lessonId: 'l1', moduleId: 'm1', content: '', ftsIndexed: true },
+            { id: 's2', name: 'Шаг 2', lessonId: 'l1', moduleId: 'm1', content: '', ftsIndexed: true },
+          ],
+        }],
+      }],
+    };
+  }
+  const conn = (id: string, stepId: string) => ({
+    id, moduleId: 'm1', moduleName: 'M1', lessonId: 'l1', lessonName: 'L1',
+    stepId, stepName: '', type: 'system' as const,
+  });
+  // 'Общий' is bound to both steps (creates the shared edge); 'ТолькоS1' only s1.
+  const stepTerms: Term[] = [
+    { id: 't1', name: 'Общий', status: 'ready', definition: '', moduleId: 'm1', lessonId: 'l1', occurrences: [], connections: [conn('b1', 's1'), conn('b2', 's2')] },
+    { id: 't2', name: 'ТолькоS1', status: 'no-trait', definition: '', moduleId: 'm1', lessonId: 'l1', occurrences: [], connections: [conn('b3', 's1')] },
+  ];
+  const opts = (over: Record<string, unknown> = {}) => ({
+    course: mkCourseWithSteps(), allTerms: stepTerms,
+    drillModuleId: 'm1', drillLessonId: 'l1',
+    hierFilterIds: null, filters: defaultGraphFilters, selectedTermIds: [],
+    ...over,
+  } as Parameters<typeof buildGraphData>[1]);
+
+  it('steps level connects steps that share a term', () => {
+    const { nodes, links } = buildGraphData('steps', opts());
+    expect(nodes.map(n => n.id).sort()).toEqual(['s1', 's2']);
+    expect(links).toHaveLength(1);          // exactly one shared term: 'Общий'
+    expect(links[0].weight).toBe(1);
+  });
+
+  it('terms level scoped to a step shows only that step\'s terms', () => {
+    const { nodes } = buildGraphData('terms', opts({ drillStepId: 's2' }));
+    const ids = nodes.map(n => n.id);
+    expect(ids).toContain('center-s2');     // step is the centre hub
+    expect(ids).toContain('t1');            // bound to s2
+    expect(ids).not.toContain('t2');        // only in s1, not s2
+  });
+});

@@ -9,6 +9,8 @@ interface BuildOptions {
   allTerms: Term[];
   drillModuleId: string | undefined;
   drillLessonId: string | undefined;
+  /** Step the user drilled into (terms level lives inside a step). */
+  drillStepId?: string | undefined;
   hierFilterIds: string[] | null;
   filters: GraphFilters;
   /** Glossary term IDs the user ticked in the left panel (used by logic-mode filtering). */
@@ -19,7 +21,7 @@ export function buildGraphData(
   level: GraphLevel,
   opts: BuildOptions,
 ): { nodes: GraphNode[]; links: GraphLink[] } {
-  const { course, allTerms, drillModuleId, drillLessonId, hierFilterIds, filters, selectedTermIds } = opts;
+  const { course, allTerms, drillModuleId, drillLessonId, drillStepId, hierFilterIds, filters, selectedTermIds } = opts;
   if (!course) return { nodes: [], links: [] };
 
   // Hierarchy is a *scope*, not a delete: all module/lesson nodes stay on the
@@ -29,10 +31,12 @@ export function buildGraphData(
   // the picture. `null` means "everything in scope".
   const scope = hierFilterIds === null ? null : new Set(hierFilterIds);
 
+  // Navigation hierarchy: modules → lessons → steps → terms.
   let result: { nodes: GraphNode[]; links: GraphLink[] };
   if (level === 'modules') result = buildModulesGraph(course, allTerms, scope);
   else if (level === 'lessons') result = buildLessonsGraph(course, allTerms, drillModuleId, scope);
-  else result = buildTermsGraph(course, allTerms, drillModuleId, drillLessonId, filters.frequency, scope);
+  else if (level === 'steps') result = buildStepsGraph(course, allTerms, drillModuleId, drillLessonId, scope);
+  else result = buildTermsGraph(course, allTerms, drillModuleId, drillLessonId, drillStepId, filters.frequency);
 
   // Weight filter — drop edges outside [from, to], then drop orphaned non-center nodes.
   if (filters.weightEnabled) {
@@ -60,8 +64,9 @@ function dropOrphans(nodes: GraphNode[], links: GraphLink[]): GraphNode[] {
     touched.add(typeof l.source === 'string' ? l.source : l.source.id);
     touched.add(typeof l.target === 'string' ? l.target : l.target.id);
   }
-  // Keep "center" / lesson hubs even if their edges were filtered out.
-  return nodes.filter(n => touched.has(n.id) || n.type === 'lesson');
+  // Keep centre hubs (lesson at terms level, step at steps/terms level) even
+  // if their edges were filtered out.
+  return nodes.filter(n => touched.has(n.id) || n.type === 'lesson' || n.type === 'step');
 }
 
 /**
@@ -92,13 +97,15 @@ function applyLogicFilter(
   const isConnected = (node: GraphNode): number => {
     if (level === 'terms') return selectedTermIds.includes(node.id) ? 1 : 0;
     const check = (t: Term) =>
-      level === 'modules' ? termInModule(t, node.id, scope) : termInLesson(t, node.id, scope);
+      level === 'modules' ? termInModule(t, node.id, scope)
+        : level === 'steps' ? termInStep(t, node.id)
+        : termInLesson(t, node.id, scope);
     return selectedTerms.reduce((acc, t) => acc + (check(t) ? 1 : 0), 0);
   };
 
   const keep = (node: GraphNode): boolean => {
-    // Don't filter lesson hubs at the terms level — they're the centre.
-    if (level === 'terms' && node.type === 'lesson') return true;
+    // Don't filter the centre hub at the terms level — it's the anchor.
+    if (level === 'terms' && (node.type === 'lesson' || node.type === 'step')) return true;
     const hits = isConnected(node);
     switch (logic) {
       case 'and': return hits === selectedTerms.length && hits > 0;
@@ -140,6 +147,12 @@ function termInLesson(t: Term, lessonId: string, scope?: Set<string> | null): bo
     if (t.lessonId === lessonId) return true;
   }
   return false;
+}
+
+/** Is the term bound to a specific step? Step-level membership relies purely on
+ *  real bindings (`connections[].stepId`) — there's no legacy single-home step. */
+function termInStep(t: Term, stepId: string): boolean {
+  return t.connections.some(c => c.stepId === stepId);
 }
 
 /** Count shared terms (by normalized name) between two groups. */
@@ -259,30 +272,83 @@ function buildLessonsGraph(course: Course, allTerms: Term[], drillModuleId: stri
 }
 
 /**
- * Terms level (drilled into one lesson): central lesson hub + a node per term
- * belonging to the lesson. Link colour distinguishes first-appearance (black)
- * vs later mention (grey). If the current lesson is the earliest lesson in the
- * course where the term shows up, the link is 'first-appearance'; otherwise
- * 'mention'. Terms with no occurrences fall back to first-appearance.
+ * Steps level (drilled into one lesson): one node per step, edges weighted by
+ * shared terms between each pair of steps. Same convention as the lessons
+ * level — thicker/brighter edge means more shared terms.
+ */
+function buildStepsGraph(
+  course: Course,
+  allTerms: Term[],
+  drillModuleId: string | undefined,
+  drillLessonId: string | undefined,
+  scope: Set<string> | null,
+) {
+  const mod = course.modules.find(m => m.id === drillModuleId) || course.modules[0];
+  const lesson = mod?.lessons.find(l => l.id === drillLessonId) || mod?.lessons[0];
+  if (!lesson) return { nodes: [], links: [] };
+
+  const nodes: GraphNode[] = lesson.steps.map(s => ({
+    id: s.id, name: s.name, type: 'step', parentId: lesson.id,
+  }));
+
+  // Bucket terms per step via real bindings (respecting the hierarchy scope at
+  // the lesson granularity).
+  const inScope = !scope || scope.has(lesson.id);
+  const termsByStep = new Map<string, Term[]>();
+  for (const s of lesson.steps) termsByStep.set(s.id, []);
+  if (inScope) {
+    for (const t of allTerms) {
+      for (const s of lesson.steps) {
+        if (termInStep(t, s.id)) termsByStep.get(s.id)!.push(t);
+      }
+    }
+  }
+
+  const links: GraphLink[] = [];
+  const steps = lesson.steps;
+  for (let i = 0; i < steps.length; i++) {
+    for (let j = i + 1; j < steps.length; j++) {
+      const a = steps[i].id, b = steps[j].id;
+      const shared = sharedTermCount(termsByStep.get(a) || [], termsByStep.get(b) || []);
+      if (shared === 0) continue;
+      links.push({ id: `${a}__${b}`, source: a, target: b, type: 'first-appearance', weight: shared });
+    }
+  }
+  return { nodes, links };
+}
+
+/**
+ * Terms level (drilled into one step, or a lesson when no step is selected):
+ * central hub + a node per term bound there. Link colour distinguishes
+ * first-appearance (black) vs later mention (grey), decided by the earliest
+ * lesson in the course where the term shows up.
  */
 function buildTermsGraph(
   course: Course,
   allTerms: Term[],
   drillModuleId: string | undefined,
   drillLessonId: string | undefined,
+  drillStepId: string | undefined,
   frequency: 'all' | 'first-appearance' | 'mention',
-  scope: Set<string> | null,
 ) {
   const mod = course.modules.find(m => m.id === drillModuleId);
   const lesson = mod?.lessons.find(l => l.id === drillLessonId) || mod?.lessons[0];
   if (!lesson) return { nodes: [], links: [] };
 
+  // Prefer scoping to the drilled step; fall back to the whole lesson (legacy
+  // path / direct deep-link without a step in the breadcrumb).
+  const step = drillStepId ? lesson.steps.find(s => s.id === drillStepId) : undefined;
+
   const lessonOrder = buildLessonOrder(course);
   const currentPos = lessonOrder.get(lesson.id) ?? Number.MAX_SAFE_INTEGER;
-  // Pick terms by any binding in this lesson.
-  void scope;
-  const lessonTerms = allTerms.filter(t => termInLesson(t, lesson.id));
-  const centerId = `center-${lesson.id}`;
+  const scopedTerms = step
+    ? allTerms.filter(t => termInStep(t, step.id))
+    : allTerms.filter(t => termInLesson(t, lesson.id));
+  const centerNode = step
+    ? { id: `center-${step.id}`, name: step.name, type: 'step' as const, parentId: step.id }
+    : { id: `center-${lesson.id}`, name: lesson.name, type: 'lesson' as const, parentId: lesson.id };
+  const centerId = centerNode.id;
+  const lessonTerms = scopedTerms;
 
   // Earliest course position where a term with the same (normalized) name
   // first appears in the course. We consider every place we know about:
@@ -312,8 +378,10 @@ function buildTermsGraph(
   const enriched = lessonTerms.map(t => {
     const earliest = earliestByName.get(norm(t.name)) ?? currentPos;
     const linkType: LinkType = earliest >= currentPos ? 'first-appearance' : 'mention';
-    // Weight = occurrences in THIS lesson (visual frequency cue), min 1.
-    const localOccs = (t.occurrences || []).filter(o => o.lessonId === lesson.id).length;
+    // Weight = occurrences in this scope (step if drilled into one, else lesson).
+    const localOccs = step
+      ? (t.occurrences || []).filter(o => o.stepId === step.id).length
+      : (t.occurrences || []).filter(o => o.lessonId === lesson.id).length;
     return { term: t, linkType, weight: Math.max(1, localOccs) };
   });
 
@@ -322,9 +390,9 @@ function buildTermsGraph(
     : enriched.filter(e => e.linkType === frequency);
 
   const nodes: GraphNode[] = [
-    { id: centerId, name: lesson.name, type: 'lesson', parentId: lesson.id },
+    centerNode,
     ...visible.map(({ term: t }) => ({
-      id: t.id, name: t.name, type: 'term' as const, status: t.status, parentId: lesson.id,
+      id: t.id, name: t.name, type: 'term' as const, status: t.status, parentId: centerNode.parentId,
     })),
   ];
 

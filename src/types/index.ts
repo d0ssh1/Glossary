@@ -5,7 +5,7 @@
 export type TermStatus = 'no-trait' | 'in-progress' | 'ready';
 export type LinkType = 'first-appearance' | 'mention';
 export type ScormVersion = '1.2' | '2004';
-export type GraphLevel = 'modules' | 'lessons' | 'terms';
+export type GraphLevel = 'modules' | 'lessons' | 'terms' | 'steps';
 export type FilterStatus = 'all' | 'no-trait' | 'in-progress' | 'ready';
 export type TabLeft = 'glossary' | 'addition';
 export type TabRight = 'context' | 'filters';
@@ -107,7 +107,7 @@ export interface Step {
 export interface GraphNode {
   id: string;
   name: string;
-  type: 'module' | 'lesson' | 'term';
+  type: 'module' | 'lesson' | 'step' | 'term';
   status?: TermStatus;
   parentId?: string;
   x?: number;

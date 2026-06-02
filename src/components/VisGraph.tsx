@@ -36,8 +36,11 @@ export default function VisGraph() {
     .find(g => g.id === activeGlossaryId);
   const allTerms = activeGlossary?.terms || [];
 
+  // Navigation hierarchy: modules → lessons → steps → terms. Each breadcrumb's
+  // `level` is the level it leads INTO, and its id is the parent we're inside.
   const drillModuleId = breadcrumbs.find(b => b.level === 'lessons')?.id;
-  const drillLessonId = breadcrumbs.find(b => b.level === 'terms')?.id;
+  const drillLessonId = breadcrumbs.find(b => b.level === 'steps')?.id;
+  const drillStepId   = breadcrumbs.find(b => b.level === 'terms')?.id;
 
   const [linkCount, setLinkCount] = useState(0);
   const [nodeCount, setNodeCount] = useState(0);
@@ -57,6 +60,7 @@ export default function VisGraph() {
       allTerms,
       drillModuleId,
       drillLessonId,
+      drillStepId,
       hierFilterIds,
       filters: graphFilters,
       selectedTermIds,
@@ -65,7 +69,7 @@ export default function VisGraph() {
     setNodeCount(nodes.length);
     setLinkCount(links.length);
 
-    const positionsKey = contextKey(graphLevel, drillModuleId, drillLessonId);
+    const positionsKey = contextKey(graphLevel, drillModuleId, drillStepId ?? drillLessonId);
     const savedPositions = loadPositions(positionsKey);
 
     // Build vis-network node dataset.
@@ -118,6 +122,10 @@ export default function VisGraph() {
         const tgtId = typeof l.target === 'string' ? l.target : (l.target as GraphNode).id;
         const isActive = l.id === activeLinkId;
         const w = edgeWidthFor(graphLevel, l);
+        // Brightness scales with the number of shared terms: heavier edge =
+        // more opaque (and thus visually "ярче"), lighter edge = more faded.
+        const weight = l.weight || 1;
+        const opacity = isActive ? 1 : Math.min(1, 0.45 + weight * 0.14);
 
         return {
           id: l.id,
@@ -128,7 +136,7 @@ export default function VisGraph() {
             color:     isActive ? '#D4A056' : linkHex[l.type],
             highlight: '#D4A056',
             hover:     '#D4A056',
-            opacity:   0.85,
+            opacity,
           },
           smooth: { enabled: false, type: 'continuous', roundness: 0 },
           _raw: l,
@@ -213,10 +221,13 @@ export default function VisGraph() {
       const nodeData = visNodes.get(nid) as ({ _raw: GraphNode } & Record<string, unknown>) | null;
       if (!nodeData?._raw) return;
       const d = nodeData._raw;
+      const name = d.name.replace('\n', ' ');
       if (graphLevel === 'modules' && d.type === 'module') {
-        dispatch({ type: 'DRILL_DOWN', nodeId: d.id, nodeName: d.name.replace('\n', ' '), level: 'lessons' });
+        dispatch({ type: 'DRILL_DOWN', nodeId: d.id, nodeName: name, level: 'lessons' });
       } else if (graphLevel === 'lessons' && d.type === 'lesson') {
-        dispatch({ type: 'DRILL_DOWN', nodeId: d.id, nodeName: d.name.replace('\n', ' '), level: 'terms' });
+        dispatch({ type: 'DRILL_DOWN', nodeId: d.id, nodeName: name, level: 'steps' });
+      } else if (graphLevel === 'steps' && d.type === 'step') {
+        dispatch({ type: 'DRILL_DOWN', nodeId: d.id, nodeName: name, level: 'terms' });
       }
     });
 
@@ -227,7 +238,7 @@ export default function VisGraph() {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphLevel, activeCourse, activeGlossary, allTerms, drillModuleId, drillLessonId, hierFilterIds, graphFilters, selectedTermIds, dispatch]);
+  }, [graphLevel, activeCourse, activeGlossary, allTerms, drillModuleId, drillLessonId, drillStepId, hierFilterIds, graphFilters, selectedTermIds, dispatch]);
 
   // ── Light effect: update selection highlight without full rebuild ───────────
   useEffect(() => {
@@ -267,50 +278,26 @@ export default function VisGraph() {
       />
 
       {(showNoLinksHint || showNoDataHint) && (
-        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+        <div className="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-center px-4">
           <div
-            className="mx-auto max-w-sm rounded border px-6 py-5 text-center shadow-sm"
+            className="flex max-w-md items-center gap-2 rounded-full border px-4 py-2 text-xs shadow-sm"
             style={{
               backgroundColor: 'var(--lw-bg-panel)',
               borderColor: 'var(--lw-border-primary)',
-              opacity: 0.97,
+              color: 'var(--lw-text-secondary)',
+              opacity: 0.95,
             }}
           >
+            <span
+              className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+              style={{ backgroundColor: 'var(--lw-accent-amber)' }}
+            />
             {showNoDataHint ? (
-              <>
-                <p className="mb-1 text-sm font-semibold" style={{ color: 'var(--lw-text-primary)' }}>
-                  Нет данных для отображения
-                </p>
-                <p className="text-xs leading-relaxed" style={{ color: 'var(--lw-text-muted)' }}>
-                  Откройте курс с импортированной структурой модулей и уроков.
-                </p>
-              </>
+              <span>Откройте курс с импортированной структурой модулей и уроков.</span>
+            ) : allTerms.length === 0 ? (
+              <span>Добавьте термины на вкладке «+ Добавить» — связи появятся после сбора данных.</span>
             ) : (
-              <>
-                <p className="mb-2 text-sm font-semibold" style={{ color: 'var(--lw-text-primary)' }}>
-                  Связи не отображаются
-                </p>
-                <p className="mb-3 text-xs leading-relaxed" style={{ color: 'var(--lw-text-secondary)' }}>
-                  Рёбра строятся по общим терминам между{' '}
-                  {graphLevel === 'modules' ? 'модулями' : 'уроками'}.
-                  {allTerms.length === 0
-                    ? ' Глоссарий пуст — добавьте термины.'
-                    : ' Нет привязок — запустите «Собрать данные».'}
-                </p>
-                <div className="rounded px-3 py-2.5 text-left" style={{ backgroundColor: 'var(--lw-bg-hover)' }}>
-                  <p className="mb-1.5 text-xs font-medium" style={{ color: 'var(--lw-text-secondary)' }}>
-                    Как получить связи:
-                  </p>
-                  <ol className="list-inside list-decimal space-y-1 text-xs" style={{ color: 'var(--lw-text-muted)' }}>
-                    {allTerms.length === 0 && (
-                      <li>Перейдите на вкладку <strong style={{ color: 'var(--lw-text-secondary)' }}>«+ Добавить»</strong> и введите термины</li>
-                    )}
-                    <li>Отметьте термины <strong style={{ color: 'var(--lw-text-secondary)' }}>чекбоксами</strong></li>
-                    <li>Нажмите <strong style={{ color: 'var(--lw-accent-amber)' }}>«Собрать данные для глоссария»</strong></li>
-                    <li>Связи появятся автоматически</li>
-                  </ol>
-                </div>
-              </>
+              <span>Отметьте термины и нажмите «Собрать данные» — связи появятся автоматически.</span>
             )}
           </div>
         </div>
