@@ -50,7 +50,10 @@ def import_course_from_dump(db: Session, course_id: int, path: Path) -> Course:
         db.delete(section)
     db.flush()
 
-    course.title = payload.get("title", course.title)
+    # Keep the name the user typed when creating the course — only fall back to
+    # the dump's title if the course was created without one.
+    if not (course.title or "").strip():
+        course.title = payload.get("title", course.title)
     course.stepik_id = payload.get("stepik_id", course.stepik_id)
 
     # Publish the total up-front so polling clients see a meaningful denominator

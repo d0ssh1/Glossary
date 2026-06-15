@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Search, ChevronDown, ChevronRight } from 'lucide-react';
 import { useApp } from '@/store/AppContext';
 import { statusDotClass } from '@/lib/constants';
+import { buildOrderIndex, applyFrequencyToContextTerms, applyLogicToContextTerms } from '@/lib/contextFilters';
 import type { Term } from '@/types';
 
 /** Normalize term names the same way buildGraphData does, for consistent matching. */
@@ -23,7 +24,7 @@ function norm(name: string): string {
  */
 export default function LinkSelectedState() {
   const { state, dispatch } = useApp();
-  const { activeLinkId, graphLevel, courses, activeCourseId, activeGlossaryId } = state;
+  const { activeLinkId, graphLevel, courses, activeCourseId, activeGlossaryId, graphFilters, selectedTermIds, readOnly } = state;
   const [linkSearch, setLinkSearch] = useState('');
   const [allExpanded, setAllExpanded] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -31,6 +32,7 @@ export default function LinkSelectedState() {
   const activeCourse = courses.find(c => c.id === activeCourseId);
   const activeGlossary = courses.flatMap(c => c.glossaries).find(g => g.id === activeGlossaryId);
   const allTerms = activeGlossary?.terms || [];
+  const orderIdx = useMemo(() => buildOrderIndex(activeCourse), [activeCourse]);
 
   const { titleA, titleB, sharedTerms } = useMemo(() => {
     if (!activeLinkId || !activeCourse) {
@@ -101,8 +103,20 @@ export default function LinkSelectedState() {
       }
     }
 
-    return { titleA: a.name, titleB: b.name, sharedTerms: shared };
-  }, [activeLinkId, activeCourse, graphLevel, allTerms]);
+    // Reflect the frequency/logic filters on the shared-terms list too. The
+    // module/lesson/step edge connects two real ids, so "первое появление" keeps
+    // only terms first seen at one of these two endpoints. (At the terms level
+    // the edge is just hub↔term, so the frequency filter doesn't apply.)
+    let visibleShared = shared;
+    if (graphLevel !== 'terms') {
+      visibleShared = applyFrequencyToContextTerms(
+        visibleShared, graphLevel, [aId, bId], graphFilters.frequency, orderIdx,
+      );
+    }
+    visibleShared = applyLogicToContextTerms(visibleShared, selectedTermIds, graphFilters.logic);
+
+    return { titleA: a.name, titleB: b.name, sharedTerms: visibleShared };
+  }, [activeLinkId, activeCourse, graphLevel, allTerms, graphFilters.frequency, graphFilters.logic, selectedTermIds, orderIdx]);
 
   const filteredShared = useMemo(() => {
     if (!linkSearch.trim()) return sharedTerms;
@@ -195,7 +209,7 @@ export default function LinkSelectedState() {
                   onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--lw-bg-hover)'; }}
                   onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
                 >
-                  <span className={`h-2 w-2 rounded-full ${statusDotClass[term.status]}`} />
+                  {!readOnly && <span className={`h-2 w-2 rounded-full ${statusDotClass[term.status]}`} />}
                   <span className="text-xs">{term.name}</span>
                 </button>
               ))}

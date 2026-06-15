@@ -16,6 +16,7 @@ from app.schemas import (
     CourseCreate,
     CourseFullRead,
     CourseRead,
+    CourseUpdate,
     ImportAccepted,
     ImportRequest,
     ImportStatus,
@@ -108,6 +109,23 @@ def get_course(course_id: int, db: Session = Depends(get_db)) -> CourseFullRead:
     if course is None:
         raise HTTPException(status_code=404, detail="Course not found")
     return _serialize_course(course)
+
+
+@router.patch("/{course_id}", response_model=CourseRead)
+def update_course(
+    course_id: int, payload: CourseUpdate, db: Session = Depends(get_db)
+) -> Course:
+    """Rename a course / change its URL. Used by the dashboard's edit button."""
+    course = db.get(Course, course_id)
+    if course is None:
+        raise HTTPException(status_code=404, detail="Course not found")
+    if payload.title is not None:
+        course.title = payload.title
+    if payload.url is not None:
+        course.url = payload.url
+    db.commit()
+    db.refresh(course)
+    return course
 
 
 @router.delete("/{course_id}", status_code=status.HTTP_204_NO_CONTENT)

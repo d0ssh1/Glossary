@@ -230,16 +230,20 @@ export default function ConnectionSettingsModal() {
         >
           {live ? 'Импорт с Stepik' : 'Начать загрузку (демо)'}
         </button>
-        <button
-          onClick={startJsonSync}
-          disabled={busy}
-          className="w-full rounded border py-2 text-sm font-medium transition-all duration-200 disabled:opacity-40"
-          style={{ borderColor: 'var(--lw-border-primary)', color: 'var(--lw-text-secondary)' }}
-          onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--lw-bg-hover)'; }}
-          onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-        >
-          {live ? 'Импорт из локального JSON' : 'Загрузить JSON-структуру курса (оффлайн)'}
-        </button>
+        {/* Local-JSON import is an untested dev pathway — only offered in the
+            offline demo. With a live backend, Stepik import is the supported route. */}
+        {!live && (
+          <button
+            onClick={startJsonSync}
+            disabled={busy}
+            className="w-full rounded border py-2 text-sm font-medium transition-all duration-200 disabled:opacity-40"
+            style={{ borderColor: 'var(--lw-border-primary)', color: 'var(--lw-text-secondary)' }}
+            onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--lw-bg-hover)'; }}
+            onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+          >
+            Загрузить JSON-структуру курса (оффлайн)
+          </button>
+        )}
       </div>
     </div>
   );

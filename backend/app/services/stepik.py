@@ -239,7 +239,10 @@ def import_course_from_stepik(db: Session, course_id: int, stepik_course_id: int
         db.delete(section)
     db.flush()
 
-    course.title = tree.get("title", course.title)
+    # Preserve the user-entered course name; the parsed Stepik title is only a
+    # fallback for courses created without a name.
+    if not (course.title or "").strip():
+        course.title = tree.get("title", course.title)
     new_stepik_id = tree.get("stepik_id")
     # UNIQUE constraint on `course.stepik_id` means only one local course can
     # claim a given Stepik course id at a time. If another row is already

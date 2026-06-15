@@ -17,13 +17,10 @@ export const statusHex: Record<TermStatus, string> = {
   'ready': '#7E9E7C',
 };
 
-/** Term node colors for the published SCORM view — a distinct cool palette so
- *  the read-only export reads differently from the editing app. */
-export const scormStatusHex: Record<TermStatus, string> = {
-  'no-trait': '#8A8FB0',
-  'in-progress': '#4F86C6',
-  'ready': '#3F9E8C',
-};
+/** Single term-node color for the published SCORM view. The export hides the
+ *  teacher-facing statuses entirely, so every term reads the same distinct cool
+ *  blue (also visually differentiates the published view from the editor). */
+export const scormTermColor = '#4F86C6';
 
 export const linkHex = {
   'first-appearance': '#2C2C2C',

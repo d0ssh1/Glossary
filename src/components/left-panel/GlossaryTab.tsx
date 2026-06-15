@@ -124,7 +124,9 @@ export default function GlossaryTab() {
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Filters — status filters are a teacher-only affordance, hidden in the
+          published SCORM view (no statuses there). */}
+      {!readOnly && (
       <div className="px-4 pb-2">
         <p className="mb-1.5 text-xs font-medium" style={{ color: 'var(--lw-text-secondary)' }}>Фильтры:</p>
         <div className="flex flex-wrap gap-2">
@@ -143,6 +145,7 @@ export default function GlossaryTab() {
           ))}
         </div>
       </div>
+      )}
 
       {/* Term list */}
       <div className={`flex-1 overflow-y-auto lw-scrollbar px-2 py-2 ${hasSelection ? 'pb-28' : ''}`}>
@@ -190,7 +193,7 @@ export default function GlossaryTab() {
                     onChange={() => dispatch({ type: 'TOGGLE_TERM_SELECTION', termId: term.id })}
                     className="accent-[var(--lw-accent-graphite)]"
                   />
-                  <span className={`h-2 w-2 rounded-full ${statusDotClass[term.status]}`} />
+                  {!readOnly && <span className={`h-2 w-2 rounded-full ${statusDotClass[term.status]}`} />}
                   <button
                     onClick={() => dispatch({ type: 'SET_ACTIVE_TERM', termId: term.id })}
                     className="flex-1 text-left text-xs transition-colors duration-200"

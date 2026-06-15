@@ -3,15 +3,19 @@ import { ModalClose } from './ModalShell';
 
 export default function ConfirmDeleteModal() {
   const { state, dispatch } = useApp();
-  const { apiDeleteTerm, apiDeleteCourse } = useApi();
+  const { apiDeleteTerm, apiDeleteCourse, apiDeleteGlossary } = useApi();
   const { modalData } = state;
   const linkCount = (modalData?.linkCount as number) || 0;
   const courseId = modalData?.courseId as string | undefined;
   const courseName = (modalData?.courseName as string | undefined) || 'курс';
+  const glossaryId = modalData?.glossaryId as string | undefined;
+  const glossaryName = (modalData?.glossaryName as string | undefined) || 'глоссарий';
 
   const handleConfirm = async () => {
     if (courseId) {
       await apiDeleteCourse(courseId);
+    } else if (glossaryId) {
+      await apiDeleteGlossary(glossaryId);
     } else {
       const termId = modalData?.termId as string | undefined;
       if (termId) await apiDeleteTerm(termId);
@@ -26,6 +30,8 @@ export default function ConfirmDeleteModal() {
       <p className="mb-5 text-sm" style={{ color: 'var(--lw-text-secondary)' }}>
         {courseId
           ? `Это удалит курс «${courseName}» со всеми глоссариями, терминами и связями. Действие необратимо.`
+          : glossaryId
+          ? `Это удалит глоссарий «${glossaryName}» со всеми его терминами и связями. Действие необратимо.`
           : `Это удалит термин и все его ${linkCount} связей на графе`}
       </p>
       <div className="flex gap-3">

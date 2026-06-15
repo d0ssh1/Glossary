@@ -7,6 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models import Step
+from app.services.parser import first_sentence_with_term
 
 
 def reindex_step(db: Session, step: Step) -> None:
@@ -94,3 +95,31 @@ def search_steps_for_term(db: Session, course_id: int, term_name: str) -> list[t
         {"cid": course_id, "q": match_expr},
     ).all()
     return [(r[0], r[1]) for r in rows]
+
+
+def first_sentence_for_term(db: Session, course_id: int, term_name: str) -> str | None:
+    """The first sentence (in course reading order) where ``term_name`` appears.
+
+    Used to auto-fill a term's definition on "Собрать данные". Walks the FTS
+    hits, orders the steps by section→lesson→step position, and returns the
+    first full sentence containing the term.
+    """
+    hits = search_steps_for_term(db, course_id, term_name)
+    if not hits:
+        return None
+    steps = [s for s in (db.get(Step, sid) for sid, _ in hits) if s is not None]
+
+    def order_key(step: Step) -> tuple[int, int, int]:
+        lesson = step.lesson
+        section = lesson.section if lesson else None
+        return (
+            section.position if section else 0,
+            lesson.position if lesson else 0,
+            step.position,
+        )
+
+    for step in sorted(steps, key=order_key):
+        sentence = first_sentence_with_term(step.content_text, term_name)
+        if sentence:
+            return sentence
+    return None

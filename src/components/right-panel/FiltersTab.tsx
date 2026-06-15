@@ -194,14 +194,19 @@ export default function FiltersTab() {
             <div>
               <p className="mb-1 text-xs font-medium" style={{ color: 'var(--lw-text-secondary)' }}>На уровне уроков:</p>
               <div className="space-y-0.5 text-xs" style={{ color: 'var(--lw-text-muted)' }}>
-                <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-[var(--lw-warning)]" />
-                  Оранжевый — нет определения
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-[var(--lw-success)]" />
-                  Зелёный — готов
-                </div>
+                {/* Term-status colours are teacher-only — hidden in the SCORM view. */}
+                {!state.readOnly && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-[var(--lw-warning)]" />
+                      Оранжевый — нет определения
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-[var(--lw-success)]" />
+                      Зелёный — готов
+                    </div>
+                  </>
+                )}
                 <div className="flex items-center gap-2">
                   <div className="h-0.5 w-4 bg-[#C0C0B8]" />
                   Серое ребро — термин упоминается повторно

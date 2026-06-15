@@ -97,6 +97,84 @@ def test_glossary_bulk_collect_search(client: TestClient) -> None:
     assert "step_url" in hits[0]
 
 
+def test_bulk_terms_case_insensitive_dedup(client: TestClient) -> None:
+    """"HTML", "html" and "Html" must collapse to a single term."""
+    course_id = _make_course_with_import(client)
+    glossary_id = client.post(
+        f"/glossaries/?course_id={course_id}", json={"title": "G"}
+    ).json()["id"]
+
+    r = client.post(
+        f"/glossaries/{glossary_id}/terms/bulk",
+        json={"names": ["HTML", "html", "Html", "CSS"]},
+    )
+    assert r.status_code == 201
+    names = [t["name"] for t in r.json()]
+    assert len(names) == 2  # one HTML (first-seen casing) + CSS
+    assert names[0] == "HTML"
+    assert "CSS" in names
+
+    # Adding "HTML" again (any case) is rejected against the stored term too.
+    r2 = client.post(
+        f"/glossaries/{glossary_id}/terms/bulk", json={"names": ["hTmL"]}
+    )
+    assert r2.json() == []
+
+
+def test_collect_autofills_definition_with_sentence(client: TestClient) -> None:
+    course_id = _make_course_with_import(client)
+    glossary_id = client.post(
+        f"/glossaries/?course_id={course_id}", json={"title": "G"}
+    ).json()["id"]
+    term_id = client.post(
+        f"/glossaries/{glossary_id}/terms/bulk", json={"names": ["SELECT"]}
+    ).json()[0]["id"]
+
+    client.post(f"/glossaries/{glossary_id}/collect", json={"term_ids": [term_id]})
+
+    full = client.get(f"/glossaries/{glossary_id}").json()
+    term = next(t for t in full["terms"] if t["id"] == term_id)
+    # The first course sentence mentioning SELECT, in full — no "..." truncation.
+    assert term["definition"] == "Оператор SELECT извлекает данные из таблицы."
+    assert "..." not in term["definition"]
+
+
+def test_collect_keeps_handwritten_definition(client: TestClient) -> None:
+    course_id = _make_course_with_import(client)
+    glossary_id = client.post(
+        f"/glossaries/?course_id={course_id}", json={"title": "G"}
+    ).json()["id"]
+    term_id = client.post(
+        f"/glossaries/{glossary_id}/terms/", json={"name": "SELECT", "definition": "моё"}
+    ).json()["id"]
+
+    client.post(f"/glossaries/{glossary_id}/collect", json={"term_ids": [term_id]})
+
+    full = client.get(f"/glossaries/{glossary_id}").json()
+    term = next(t for t in full["terms"] if t["id"] == term_id)
+    assert term["definition"] == "моё"  # auto-fill never clobbers a real definition
+
+
+def test_occurrences_return_full_sentences(client: TestClient) -> None:
+    course_id = _make_course_with_import(client)
+    glossary_id = client.post(
+        f"/glossaries/?course_id={course_id}", json={"title": "G"}
+    ).json()["id"]
+    term_id = client.post(
+        f"/glossaries/{glossary_id}/terms/bulk", json={"names": ["SELECT"]}
+    ).json()[0]["id"]
+    client.post(f"/glossaries/{glossary_id}/collect", json={"term_ids": [term_id]})
+
+    occ = client.get(
+        f"/glossaries/{glossary_id}/terms/{term_id}/occurrences"
+    ).json()
+    assert len(occ) > 0
+    snippets = [o["snippet"] for o in occ]
+    # Full sentences with the term bolded, and no FTS "..." ellipsis markers.
+    assert any("<b>SELECT</b>" in s for s in snippets)
+    assert all("..." not in s for s in snippets)
+
+
 def test_scorm_zip(client: TestClient) -> None:
     course_id = _make_course_with_import(client)
     r = client.post(f"/glossaries/?course_id={course_id}", json={"title": "G"})

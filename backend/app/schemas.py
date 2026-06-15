@@ -19,6 +19,11 @@ class CourseCreate(CourseBase):
     pass
 
 
+class CourseUpdate(BaseModel):
+    title: Optional[str] = None
+    url: Optional[str] = None
+
+
 class CourseRead(CourseBase):
     id: int
     is_parsed: bool

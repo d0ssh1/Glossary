@@ -11,7 +11,9 @@ export default function ContextTab() {
   const activeGlossary = courses.flatMap(c => c.glossaries).find(g => g.id === activeGlossaryId);
   const activeTerm = activeGlossary?.terms.find(t => t.id === activeTermId);
 
-  if (activeTermId && activeTerm) return <TermSelectedState term={activeTerm} />;
+  // `key` forces a fresh editor per term so unsaved local edits never bleed
+  // from one term into another when switching directly between them.
+  if (activeTermId && activeTerm) return <TermSelectedState key={activeTerm.id} term={activeTerm} />;
   if (activeLinkId) return <LinkSelectedState />;
   if (activeNodeId) return <NodeSelectedState />;
   return <EmptyState />;

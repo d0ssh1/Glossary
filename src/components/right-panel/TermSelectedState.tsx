@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { ChevronDown, ChevronRight, Trash2, ExternalLink, Pencil, Sparkles, User } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ChevronDown, ChevronRight, Trash2, ExternalLink, Pencil } from 'lucide-react';
 import { useApp, useApi } from '@/store/AppContext';
 import { statusLabel } from '@/lib/constants';
 import LinkEditor from './LinkEditor';
+import ConnectionsTree from './ConnectionsTree';
 import type { Term } from '@/types';
 
 interface Props { term: Term }
@@ -34,6 +35,13 @@ export default function TermSelectedState({ term }: Props) {
 
   const hasChanges = definition !== term.definition || nameValue !== term.name;
 
+  // Keep the global "unsaved" flag in lockstep with the *actual* edit state.
+  // Setting it only on keystroke (and never clearing on revert) is what let a
+  // stale flag survive a closed editor and fire a spurious prompt later.
+  useEffect(() => {
+    dispatch({ type: 'SET_UNSAVED_CHANGES', value: hasChanges });
+  }, [hasChanges, dispatch]);
+
   // "Найдено в курсе" must reflect only real, context-bearing hits — the FTS
   // occurrences (preferred) or, before they're lazy-loaded, the system-created
   // bindings. Bindings the user placed by hand carry no extracted snippet, so
@@ -53,10 +61,7 @@ export default function TermSelectedState({ term }: Props) {
           ) : editingName ? (
             <input
               value={nameValue}
-              onChange={e => {
-                setNameValue(e.target.value);
-                dispatch({ type: 'SET_UNSAVED_CHANGES', value: true });
-              }}
+              onChange={e => setNameValue(e.target.value)}
               onBlur={() => setEditingName(false)}
               onKeyDown={e => e.key === 'Enter' && setEditingName(false)}
               autoFocus
@@ -86,9 +91,11 @@ export default function TermSelectedState({ term }: Props) {
             </button>
           )}
         </div>
-        <p className="mt-1 text-xs" style={{ color: 'var(--lw-text-muted)' }}>
-          {statusLabel[term.status]}
-        </p>
+        {!readOnly && (
+          <p className="mt-1 text-xs" style={{ color: 'var(--lw-text-muted)' }}>
+            {statusLabel[term.status]}
+          </p>
+        )}
       </div>
 
       {/* Definition */}
@@ -104,10 +111,7 @@ export default function TermSelectedState({ term }: Props) {
         ) : (
           <textarea
             value={definition}
-            onChange={e => {
-              setDefinition(e.target.value);
-              dispatch({ type: 'SET_UNSAVED_CHANGES', value: true });
-            }}
+            onChange={e => setDefinition(e.target.value)}
             rows={4}
             className="w-full resize-none rounded border px-2.5 py-2 text-xs outline-none"
             style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)', color: 'var(--lw-text-primary)' }}
@@ -159,28 +163,7 @@ export default function TermSelectedState({ term }: Props) {
             <LinkEditor term={term} onClose={() => setShowLinkEditor(false)} />
           )}
           {(readOnly || !showLinkEditor) && !connectionsCollapsed && (
-            <div className="space-y-1">
-              {term.connections.map(conn => (
-                <div key={conn.id} className="rounded px-2 py-1.5 text-xs" style={{ backgroundColor: 'var(--lw-bg-primary)' }}>
-                  <div className="flex items-center gap-1.5">
-                    {conn.type === 'editor'
-                      ? <User size={10} style={{ color: 'var(--lw-accent-amber)' }} />
-                      : <Sparkles size={10} style={{ color: 'var(--lw-success)' }} />}
-                    <span style={{ color: 'var(--lw-text-secondary)' }}>{conn.moduleName}</span>
-                  </div>
-                  <div className="ml-4 mt-0.5">
-                    <span style={{ color: 'var(--lw-text-muted)' }}>{conn.lessonName}</span>
-                  </div>
-                  <div className="ml-6 mt-0.5 flex items-center gap-1">
-                    <span style={{ color: 'var(--lw-text-primary)' }}>{conn.stepName}</span>
-                    <ExternalLink size={9} style={{ color: 'var(--lw-accent-amber)' }} />
-                  </div>
-                </div>
-              ))}
-              {term.connections.length === 0 && (
-                <p className="py-1 text-xs italic" style={{ color: 'var(--lw-text-muted)' }}>Нет связей</p>
-              )}
-            </div>
+            <ConnectionsTree connections={term.connections} />
           )}
         </div>
       </div>

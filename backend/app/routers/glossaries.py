@@ -15,7 +15,7 @@ from app.schemas import (
     GlossaryRead,
     GlossaryUpdate,
 )
-from app.services.fts import search_steps_for_term
+from app.services.fts import first_sentence_for_term, search_steps_for_term
 
 router = APIRouter(prefix="/glossaries", tags=["glossaries"])
 
@@ -138,6 +138,13 @@ def collect_bindings(
             existing_step_ids.add(step_id)
             has_any = True
             created += 1
+
+        # Auto-fill an empty definition with the first sentence the term appears
+        # in (course reading order). Hand-written definitions are left untouched.
+        if not (term.definition or "").strip():
+            sentence = first_sentence_for_term(db, course_id, term.name)
+            if sentence:
+                term.definition = sentence
 
     db.commit()
     return CollectReport(terms_processed=len(terms), bindings_created=created)

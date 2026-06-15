@@ -11,7 +11,9 @@ import {
   apiEnabled, listCourses, getCourse, listGlossaries, getGlossary,
   createCourse as apiCreateCourseRaw, createGlossary as apiCreateGlossaryRaw,
   updateTerm as apiUpdateTermRaw, deleteTerm as apiDeleteTermRaw,
+  updateCourse as apiUpdateCourseRaw,
   deleteCourse as apiDeleteCourseRaw,
+  updateGlossary as apiUpdateGlossaryRaw, deleteGlossary as apiDeleteGlossaryRaw,
   bulkCreateTerms as apiBulkCreateTermsRaw,
   importCourse as apiImportCourseRaw, downloadScorm as apiDownloadScormRaw,
   collectBindings as apiCollectBindingsRaw, getImportStatus as apiGetImportStatus,
@@ -155,8 +157,11 @@ type Action =
   | { type: 'SET_COURSES'; courses: Course[] }
   | { type: 'ADD_COURSE'; course: Course }
   | { type: 'REPLACE_COURSE'; course: Course }
+  | { type: 'RENAME_COURSE'; courseId: string; name: string }
   | { type: 'DELETE_COURSE'; courseId: string }
   | { type: 'ADD_GLOSSARY'; courseId: string; glossary: Glossary }
+  | { type: 'RENAME_GLOSSARY'; glossaryId: string; name: string }
+  | { type: 'DELETE_GLOSSARY'; glossaryId: string }
   | { type: 'UPDATE_TERM'; termId: string; updates: Partial<Term> }
   | { type: 'DELETE_TERM'; termId: string }
   | { type: 'ADD_TERMS'; glossaryId: string; terms: Term[] };
@@ -174,16 +179,25 @@ export function appReducer(state: AppState, action: Action): AppState {
       if (state.hasUnsavedChanges && action.termId !== state.activeTermId) {
         return { ...state, modal: 'unsaved-changes', pendingNavigation: () => ({ type: 'SET_ACTIVE_TERM', termId: action.termId }) };
       }
-      return { ...state, activeTermId: action.termId, activeNodeId: null, activeLinkId: null, hasUnsavedChanges: false };
+      // Selecting something always routes the right panel to Контекст.
+      return { ...state, activeTermId: action.termId, activeNodeId: null, activeLinkId: null, hasUnsavedChanges: false, rightTab: action.termId ? 'context' : state.rightTab };
     }
     case 'SET_ACTIVE_NODE': {
       if (state.hasUnsavedChanges && action.nodeId !== state.activeNodeId) {
         return { ...state, modal: 'unsaved-changes', pendingNavigation: () => ({ type: 'SET_ACTIVE_NODE', nodeId: action.nodeId }) };
       }
-      return { ...state, activeNodeId: action.nodeId, activeTermId: null, activeLinkId: null, hasUnsavedChanges: false };
+      return { ...state, activeNodeId: action.nodeId, activeTermId: null, activeLinkId: null, hasUnsavedChanges: false, rightTab: action.nodeId ? 'context' : state.rightTab };
     }
-    case 'SET_ACTIVE_LINK':
-      return { ...state, activeLinkId: action.linkId, activeNodeId: null, activeTermId: null };
+    case 'SET_ACTIVE_LINK': {
+      // Edges go through the same unsaved-changes guard as nodes/terms. Without
+      // this, clicking an edge while a term edit was open left the "unsaved"
+      // flag set on a now-closed editor, which then falsely fired on the *next*
+      // term click. Honour it here and clear it on success.
+      if (state.hasUnsavedChanges && action.linkId !== state.activeLinkId) {
+        return { ...state, modal: 'unsaved-changes', pendingNavigation: () => ({ type: 'SET_ACTIVE_LINK', linkId: action.linkId }) };
+      }
+      return { ...state, activeLinkId: action.linkId, activeNodeId: null, activeTermId: null, hasUnsavedChanges: false, rightTab: action.linkId ? 'context' : state.rightTab };
+    }
     case 'SET_FTS_INDEXED': {
       // Mirror backend semantics: flag lives on Section (Module) or Lesson directly.
       const courses = state.courses.map(c => ({
@@ -292,6 +306,16 @@ export function appReducer(state: AppState, action: Action): AppState {
         activeTermId: wasActive ? null : state.activeTermId,
       };
     }
+    case 'RENAME_COURSE': {
+      const courses = state.courses.map(c =>
+        c.id === action.courseId ? { ...c, name: action.name } : c,
+      );
+      // Keep the breadcrumb root label in sync if this course is open.
+      const breadcrumbs = state.breadcrumbs.map((b, i) =>
+        i === 0 && b.id === action.courseId ? { ...b, name: action.name } : b,
+      );
+      return { ...state, courses, breadcrumbs };
+    }
     case 'ADD_GLOSSARY': {
       const updated = state.courses.map(c =>
         c.id === action.courseId
@@ -299,6 +323,30 @@ export function appReducer(state: AppState, action: Action): AppState {
           : c
       );
       return { ...state, courses: updated };
+    }
+    case 'RENAME_GLOSSARY': {
+      const courses = state.courses.map(c => ({
+        ...c,
+        glossaries: c.glossaries.map(g =>
+          g.id === action.glossaryId ? { ...g, name: action.name } : g,
+        ),
+      }));
+      return { ...state, courses };
+    }
+    case 'DELETE_GLOSSARY': {
+      const courses = state.courses.map(c => ({
+        ...c,
+        glossaries: c.glossaries.filter(g => g.id !== action.glossaryId),
+      }));
+      const wasActive = state.activeGlossaryId === action.glossaryId;
+      return {
+        ...state,
+        courses,
+        activeGlossaryId: wasActive ? null : state.activeGlossaryId,
+        activeTermId: wasActive ? null : state.activeTermId,
+        activeNodeId: wasActive ? null : state.activeNodeId,
+        activeLinkId: wasActive ? null : state.activeLinkId,
+      };
     }
     case 'UPDATE_TERM': {
       const courses = state.courses.map(c => ({
@@ -490,6 +538,17 @@ export function useApi() {
     }
   }, [dispatch, findGlossaryId]);
 
+  const apiRenameCourse = useCallback(async (courseId: string, name: string) => {
+    dispatch({ type: 'RENAME_COURSE', courseId, name });
+    if (apiEnabled()) {
+      try {
+        await apiUpdateCourseRaw(stringIdToNumeric(courseId), { title: name });
+      } catch (err) {
+        console.error('[useApi] renameCourse failed', err);
+      }
+    }
+  }, [dispatch]);
+
   const apiDeleteCourse = useCallback(async (courseId: string) => {
     // Optimistic: drop it from the UI immediately, then tell the backend.
     dispatch({ type: 'DELETE_COURSE', courseId });
@@ -498,6 +557,28 @@ export function useApi() {
         await apiDeleteCourseRaw(stringIdToNumeric(courseId));
       } catch (err) {
         console.error('[useApi] deleteCourse failed', err);
+      }
+    }
+  }, [dispatch]);
+
+  const apiRenameGlossary = useCallback(async (glossaryId: string, name: string) => {
+    dispatch({ type: 'RENAME_GLOSSARY', glossaryId, name });
+    if (apiEnabled()) {
+      try {
+        await apiUpdateGlossaryRaw(stringIdToNumeric(glossaryId), { title: name });
+      } catch (err) {
+        console.error('[useApi] renameGlossary failed', err);
+      }
+    }
+  }, [dispatch]);
+
+  const apiDeleteGlossary = useCallback(async (glossaryId: string) => {
+    dispatch({ type: 'DELETE_GLOSSARY', glossaryId });
+    if (apiEnabled()) {
+      try {
+        await apiDeleteGlossaryRaw(stringIdToNumeric(glossaryId));
+      } catch (err) {
+        console.error('[useApi] deleteGlossary failed', err);
       }
     }
   }, [dispatch]);
@@ -647,7 +728,8 @@ export function useApi() {
   }, [dispatch, findGlossaryId]);
 
   return {
-    apiCreateCourse, apiCreateGlossary, apiDeleteCourse,
+    apiCreateCourse, apiCreateGlossary, apiDeleteCourse, apiRenameCourse,
+    apiRenameGlossary, apiDeleteGlossary,
     apiUpdateTerm, apiDeleteTerm, apiBulkAddTerms,
     apiImportCourse, apiDownloadScorm, apiCollectBindings, apiRefetchCourse,
     apiSetFtsIndexed, apiLoadOccurrences,

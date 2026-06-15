@@ -1,7 +1,7 @@
 // ============================================================
 // SCREEN 1 — Dashboard (Course Manager)
 // ============================================================
-import { Plus, Upload, FileText, ChevronRight, Trash2 } from 'lucide-react';
+import { Plus, Upload, FileText, ChevronRight, Trash2, Pencil } from 'lucide-react';
 import { useApp } from '@/store/AppContext';
 import type { Glossary } from '@/types';
 
@@ -40,6 +40,18 @@ export default function Dashboard() {
     dispatch({ type: 'OPEN_MODAL', modal: 'confirm-delete', data: { courseId, courseName } });
   };
 
+  const handleRenameCourse = (courseId: string, currentName: string) => {
+    dispatch({ type: 'OPEN_MODAL', modal: 'rename', data: { kind: 'course', id: courseId, currentName } });
+  };
+
+  const handleRenameGlossary = (glossaryId: string, currentName: string) => {
+    dispatch({ type: 'OPEN_MODAL', modal: 'rename', data: { kind: 'glossary', id: glossaryId, currentName } });
+  };
+
+  const handleDeleteGlossary = (glossaryId: string, glossaryName: string) => {
+    dispatch({ type: 'OPEN_MODAL', modal: 'confirm-delete', data: { glossaryId, glossaryName } });
+  };
+
   const handleExportScorm = (courseId: string, glossaryId: string) => {
     const course = courses.find(c => c.id === courseId);
     const glossary = course?.glossaries.find(g => g.id === glossaryId);
@@ -68,11 +80,8 @@ export default function Dashboard() {
               <FileText size={16} style={{ color: 'var(--lw-bg-primary)' }} />
             </div>
             <h1 className="text-xl font-semibold tracking-tight" style={{ color: 'var(--lw-text-primary)', letterSpacing: '-0.02em' }}>
-              Lexicon Weaver
+              Интерактивный глоссарий
             </h1>
-          </div>
-          <div className="text-xs font-medium" style={{ color: 'var(--lw-text-muted)' }}>
-            SCORM Glossary Editor
           </div>
         </div>
       </header>
@@ -128,6 +137,17 @@ export default function Dashboard() {
                     Импорт курса
                   </button>
                   <button
+                    onClick={() => handleRenameCourse(course.id, course.name)}
+                    className="flex items-center justify-center rounded border p-1.5 transition-all duration-200"
+                    style={{ borderColor: 'var(--lw-border-primary)', color: 'var(--lw-text-muted)' }}
+                    title="Изменить название курса"
+                    aria-label="Изменить название курса"
+                    onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--lw-bg-hover)'; e.currentTarget.style.color = 'var(--lw-accent-amber)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--lw-text-muted)'; }}
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button
                     onClick={() => handleDeleteCourse(course.id, course.name)}
                     className="flex items-center justify-center rounded border p-1.5 transition-all duration-200"
                     style={{ borderColor: 'var(--lw-border-primary)', color: 'var(--lw-text-muted)' }}
@@ -164,39 +184,67 @@ export default function Dashboard() {
                   {course.glossaries.map(glossary => (
                     <div
                       key={glossary.id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded px-3 py-2.5 transition-colors duration-200"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handleOpenGlossary(course.id, glossary.id)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleOpenGlossary(course.id, glossary.id);
+                        }
+                      }}
+                      className="flex cursor-pointer flex-wrap items-center justify-between gap-2 rounded px-3 py-2.5 transition-colors duration-200"
                       style={{ backgroundColor: 'transparent' }}
                       onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--lw-bg-hover)'; }}
                       onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
                     >
                       <div className="flex min-w-0 flex-1 items-center gap-3">
                         <div className={`h-2 w-2 shrink-0 rounded-full ${getStatusColor(glossary)}`} />
-                        <button
-                          onClick={() => handleOpenGlossary(course.id, glossary.id)}
-                          className="text-sm font-medium transition-colors duration-200"
-                          style={{ color: 'var(--lw-text-primary)' }}
-                          onMouseEnter={e => { e.currentTarget.style.color = 'var(--lw-accent-amber)'; }}
-                          onMouseLeave={e => { e.currentTarget.style.color = 'var(--lw-text-primary)'; }}
-                        >
+                        <span className="truncate text-sm font-medium" style={{ color: 'var(--lw-text-primary)' }}>
                           {glossary.name}
-                        </button>
-                        <span className="text-xs" style={{ color: 'var(--lw-text-muted)' }}>
+                        </span>
+                        <span className="shrink-0 text-xs" style={{ color: 'var(--lw-text-muted)' }}>
                           {glossary.terms.length} терминов
                         </span>
                       </div>
-                      <button
-                        onClick={() => handleExportScorm(course.id, glossary.id)}
-                        disabled={glossary.terms.length === 0}
-                        className="flex items-center gap-1 rounded border px-2.5 py-1 text-xs font-medium transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40"
-                        style={{ borderColor: 'var(--lw-border-primary)', color: 'var(--lw-text-secondary)' }}
-                        onMouseEnter={e => {
-                          if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = 'var(--lw-bg-hover)';
-                        }}
-                        onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                      >
-                        Перевести в SCORM
-                        <ChevronRight size={12} />
-                      </button>
+                      {/* Action cluster — clicks here must not bubble up to the row's open handler. */}
+                      <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={() => handleRenameGlossary(glossary.id, glossary.name)}
+                          className="flex items-center justify-center rounded border p-1.5 transition-all duration-200"
+                          style={{ borderColor: 'var(--lw-border-primary)', color: 'var(--lw-text-muted)' }}
+                          title="Изменить название глоссария"
+                          aria-label="Изменить название глоссария"
+                          onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--lw-bg-panel)'; e.currentTarget.style.color = 'var(--lw-accent-amber)'; }}
+                          onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--lw-text-muted)'; }}
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteGlossary(glossary.id, glossary.name)}
+                          className="flex items-center justify-center rounded border p-1.5 transition-all duration-200"
+                          style={{ borderColor: 'var(--lw-border-primary)', color: 'var(--lw-text-muted)' }}
+                          title="Удалить глоссарий"
+                          aria-label="Удалить глоссарий"
+                          onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--lw-bg-panel)'; e.currentTarget.style.color = 'var(--lw-error)'; }}
+                          onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--lw-text-muted)'; }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                        <button
+                          onClick={() => handleExportScorm(course.id, glossary.id)}
+                          disabled={glossary.terms.length === 0}
+                          className="flex items-center gap-1 rounded border px-2.5 py-1 text-xs font-medium transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40"
+                          style={{ borderColor: 'var(--lw-border-primary)', color: 'var(--lw-text-secondary)' }}
+                          onMouseEnter={e => {
+                            if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = 'var(--lw-bg-panel)';
+                          }}
+                          onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                        >
+                          Перевести в SCORM
+                          <ChevronRight size={12} />
+                        </button>
+                      </div>
                     </div>
                   ))}
                   {course.glossaries.length === 0 && (

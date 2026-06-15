@@ -11,6 +11,7 @@ import ExportSettingsModal from './ExportSettingsModal';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import UnsavedChangesModal from './UnsavedChangesModal';
 import OccurrencesModal from './OccurrencesModal';
+import RenameModal from './RenameModal';
 
 export default function Modals() {
   const { state } = useApp();
@@ -39,6 +40,7 @@ export default function Modals() {
         {modal === 'confirm-delete' && <ConfirmDeleteModal />}
         {modal === 'unsaved-changes' && <UnsavedChangesModal />}
         {modal === 'occurrences' && <OccurrencesModal />}
+        {modal === 'rename' && <RenameModal />}
       </div>
       <style>{`
         @keyframes modalIn {

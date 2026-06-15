@@ -6,7 +6,7 @@ import { Network } from 'vis-network';
 import { DataSet } from 'vis-data';
 import { useApp } from '@/store/AppContext';
 import { buildGraphData } from '@/lib/graphData';
-import { statusHex, scormStatusHex, linkHex } from '@/lib/constants';
+import { statusHex, scormTermColor, linkHex } from '@/lib/constants';
 import { contextKey, loadPositions, savePositions } from '@/lib/nodePositions';
 import type { GraphNode, GraphLink, GraphLevel } from '@/types';
 
@@ -19,6 +19,30 @@ function capitalize(s: string): string {
   return s.length > 0 ? s[0].toUpperCase() + s.slice(1) : s;
 }
 
+/** Human-readable level noun shown as a sublabel under a node's name, so a node
+ *  titled e.g. "HTML" reads unambiguously as a module vs a lesson. */
+function levelNoun(type: GraphNode['type']): string {
+  switch (type) {
+    case 'module': return 'Модуль';
+    case 'lesson': return 'Урок';
+    default: return '';
+  }
+}
+
+/** vis-network parses markdown in labels (multi:'md'); neutralize the tokens so
+ *  a title containing * or _ renders literally instead of going bold/italic. */
+function mdSafe(s: string): string {
+  return s.replace(/[*_`]/g, ' ');
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 export default function VisGraph() {
   const containerRef = useRef<HTMLDivElement>(null);
   const networkRef = useRef<Network | null>(null);
@@ -29,8 +53,10 @@ export default function VisGraph() {
     activeGlossaryId, activeCourseId, breadcrumbs,
     courses, hierFilterIds, graphFilters, selectedTermIds, readOnly,
   } = state;
-  // Published SCORM view uses a distinct cool term palette.
-  const termPalette = readOnly ? scormStatusHex : statusHex;
+  // Published SCORM view hides statuses: every term uses one cool colour.
+  // The editor keeps the status-encoded palette.
+  const termColorFor = (status: GraphNode['status']) =>
+    readOnly ? scormTermColor : statusHex[status || 'no-trait'];
 
   const activeCourse = courses.find(c => c.id === activeCourseId);
   const activeGlossary = courses
@@ -86,12 +112,18 @@ export default function VisGraph() {
         const borderColor = isActive
           ? '#D4A056'
           : isTerm
-            ? termPalette[n.status || 'no-trait']
+            ? termColorFor(n.status)
             : isCenter ? '#D4A056' : '#E0DFDA';
+
+        // Module/lesson nodes carry a small italic level sublabel (Модуль/Урок);
+        // steps/terms/center hubs are self-evident and stay single-line.
+        const noun = isCenter ? '' : levelNoun(n.type);
+        const displayName = isTerm ? capitalize(n.name) : n.name;
+        const label = noun ? `${mdSafe(displayName)}\n*${noun}*` : mdSafe(displayName);
 
         return {
           id: n.id,
-          label: isTerm ? capitalize(n.name) : n.name,
+          label,
           title: n.name,
           x: saved?.x,
           y: saved?.y,
@@ -102,7 +134,7 @@ export default function VisGraph() {
             size: isTerm ? 11 : 13,
             face: 'Inter, sans-serif',
             color: '#1A1A1A',
-            multi: true,
+            multi: 'md',
           },
           color: {
             background: bgColor,
@@ -124,10 +156,13 @@ export default function VisGraph() {
         const tgtId = typeof l.target === 'string' ? l.target : (l.target as GraphNode).id;
         const isActive = l.id === activeLinkId;
         const w = edgeWidthFor(graphLevel, l);
-        // Brightness scales with the number of shared terms: heavier edge =
-        // more opaque (and thus visually "ярче"), lighter edge = more faded.
+        // Faint by default so a dense graph (5+ lessons) reads as "many light
+        // threads" instead of a tangle. Heavier edges are a touch more present.
+        // Hovering or selecting a node lights up just its edges via the solid
+        // hover/highlight colours below (vis-network handles the swap).
         const weight = l.weight || 1;
-        const opacity = isActive ? 1 : Math.min(1, 0.45 + weight * 0.14);
+        const baseAlpha = Math.min(0.4, 0.12 + weight * 0.04);
+        const baseColor = hexToRgba(linkHex[l.type], baseAlpha);
 
         return {
           id: l.id,
@@ -135,10 +170,9 @@ export default function VisGraph() {
           to: tgtId,
           width: isActive ? w + 2 : w,
           color: {
-            color:     isActive ? '#D4A056' : linkHex[l.type],
+            color:     isActive ? '#D4A056' : baseColor,
             highlight: '#D4A056',
             hover:     '#D4A056',
-            opacity,
           },
           smooth: { enabled: false, type: 'continuous', roundness: 0 },
           _raw: l,
@@ -163,6 +197,10 @@ export default function VisGraph() {
       },
       interaction: {
         hover: true,
+        // Light up a node's own edges when it's hovered or selected — the rest
+        // of the graph stays faint (see the per-edge base alpha above).
+        hoverConnectedEdges: true,
+        selectConnectedEdges: true,
         tooltipDelay: 200,
         zoomView: true,
         dragView: true,
@@ -230,6 +268,9 @@ export default function VisGraph() {
         dispatch({ type: 'DRILL_DOWN', nodeId: d.id, nodeName: name, level: 'steps' });
       } else if (graphLevel === 'steps' && d.type === 'step') {
         dispatch({ type: 'DRILL_DOWN', nodeId: d.id, nodeName: name, level: 'terms' });
+      } else if (d.type === 'term') {
+        // Terms don't drill further — open the term in the Контекст panel.
+        dispatch({ type: 'SET_ACTIVE_TERM', termId: d.id });
       }
     });
 
@@ -258,7 +299,9 @@ export default function VisGraph() {
       const nodeIds = body?.nodes ?? {};
       const edgeIds = body?.edges ?? {};
       if (activeNodeId && nodeIds[activeNodeId]) {
-        net.selectNodes([activeNodeId], false);
+        // highlightEdges=true so the selected node's connections brighten while
+        // it's shown in the Контекст panel (matches the hover behaviour).
+        net.selectNodes([activeNodeId], true);
       } else if (activeLinkId && edgeIds[activeLinkId]) {
         net.selectEdges([activeLinkId]);
       }

@@ -2,12 +2,13 @@ import { useState, useMemo } from 'react';
 import { Search, ChevronDown, ChevronRight } from 'lucide-react';
 import { useApp, useApi } from '@/store/AppContext';
 import { statusDotClass } from '@/lib/constants';
+import { buildOrderIndex, applyFrequencyToContextTerms, applyLogicToContextTerms } from '@/lib/contextFilters';
 import type { Term } from '@/types';
 
 export default function NodeSelectedState() {
   const { state, dispatch } = useApp();
   const { apiSetFtsIndexed } = useApi();
-  const { activeNodeId, graphLevel, courses, activeGlossaryId, activeCourseId, breadcrumbs } = state;
+  const { activeNodeId, graphLevel, courses, activeGlossaryId, activeCourseId, breadcrumbs, graphFilters, selectedTermIds, readOnly } = state;
   // On the terms-level the "selected node" is actually the centre hub (a step,
   // or a lesson when no step was drilled into) — derived from the breadcrumb
   // that initiated this drill-down. Used to scope title and the term list.
@@ -56,6 +57,8 @@ export default function NodeSelectedState() {
     return null;
   }, [activeCourse, activeNodeId, graphLevel, stepDrillId]);
 
+  const orderIdx = useMemo(() => buildOrderIndex(activeCourse), [activeCourse]);
+
   const nodeTerms = useMemo(() => {
     // Match against real bindings (term.connections). Fall back to the legacy
     // moduleId/lessonId home-field when bindings haven't been collected yet.
@@ -65,17 +68,23 @@ export default function NodeSelectedState() {
       t.connections.some(c => c.lessonId === lid) || t.lessonId === lid;
     const inStep = (t: typeof terms[number], sid: string) =>
       t.connections.some(c => c.stepId === sid);
-    return terms
-      .filter(t => {
-        if (graphLevel === 'modules' && activeNodeId) return inModule(t, activeNodeId);
-        if (graphLevel === 'lessons' && activeNodeId) return inLesson(t, activeNodeId);
-        if (graphLevel === 'steps' && activeNodeId) return inStep(t, activeNodeId);
-        // terms-level: scope to the drilled step (or lesson fallback).
-        if (graphLevel === 'terms' && stepDrillId) return inStep(t, stepDrillId) || inLesson(t, stepDrillId);
-        return true;
-      })
-      .filter(t => !nodeSearch.trim() || t.name.toLowerCase().includes(nodeSearch.toLowerCase()));
-  }, [terms, graphLevel, activeNodeId, stepDrillId, nodeSearch]);
+    const membership = terms.filter(t => {
+      if (graphLevel === 'modules' && activeNodeId) return inModule(t, activeNodeId);
+      if (graphLevel === 'lessons' && activeNodeId) return inLesson(t, activeNodeId);
+      if (graphLevel === 'steps' && activeNodeId) return inStep(t, activeNodeId);
+      // terms-level: scope to the drilled step (or lesson fallback).
+      if (graphLevel === 'terms' && stepDrillId) return inStep(t, stepDrillId) || inLesson(t, stepDrillId);
+      return true;
+    });
+    // Honour the frequency/logic filters here too, so e.g. "первое появление"
+    // hides a term from every node except the one it first appears in.
+    const currentId = graphLevel === 'terms' ? stepDrillId : activeNodeId;
+    let visible = applyFrequencyToContextTerms(
+      membership, graphLevel, currentId ? [currentId] : [], graphFilters.frequency, orderIdx,
+    );
+    visible = applyLogicToContextTerms(visible, selectedTermIds, graphFilters.logic);
+    return visible.filter(t => !nodeSearch.trim() || t.name.toLowerCase().includes(nodeSearch.toLowerCase()));
+  }, [terms, graphLevel, activeNodeId, stepDrillId, nodeSearch, graphFilters.frequency, graphFilters.logic, selectedTermIds, orderIdx]);
 
   const grouped = useMemo(() => {
     const g: Record<string, Term[]> = {};
@@ -174,7 +183,7 @@ export default function NodeSelectedState() {
                   onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--lw-bg-hover)'; }}
                   onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
                 >
-                  <span className={`h-2 w-2 rounded-full ${statusDotClass[term.status]}`} />
+                  {!readOnly && <span className={`h-2 w-2 rounded-full ${statusDotClass[term.status]}`} />}
                   <span className="text-xs">{term.name}</span>
                 </button>
               ))}

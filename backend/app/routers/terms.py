@@ -15,6 +15,7 @@ from app.schemas import (
     TermUpdate,
 )
 from app.services.fts import search_steps_for_term
+from app.services.parser import first_sentence_with_term, highlight_term_html
 
 router = APIRouter(prefix="/glossaries/{glossary_id}/terms", tags=["terms"])
 
@@ -54,11 +55,16 @@ def create_term(
 def bulk_create_terms(
     glossary_id: int, payload: TermBulkCreate, db: Session = Depends(get_db)
 ) -> list[Term]:
-    """Create many terms at once. Empty names and intra-batch duplicates are skipped."""
+    """Create many terms at once.
+
+    Empty names and duplicates are skipped. Duplicate detection is
+    case-insensitive — "HTML" and "html" are the same term — so the glossary
+    never ends up with two entries that differ only by letter case.
+    """
     _get_glossary_or_404(db, glossary_id)
 
     existing_names = {
-        row[0]
+        row[0].casefold()
         for row in db.execute(
             select(Term.name).where(Term.glossary_id == glossary_id)
         ).all()
@@ -68,9 +74,10 @@ def bulk_create_terms(
     seen: set[str] = set()
     for raw in payload.names:
         name = raw.strip()
-        if not name or name in seen or name in existing_names:
+        key = name.casefold()
+        if not name or key in seen or key in existing_names:
             continue
-        seen.add(name)
+        seen.add(key)
         term = Term(glossary_id=glossary_id, name=name, definition="")
         db.add(term)
         created.append(term)
@@ -138,6 +145,15 @@ def list_occurrences(
         section = db.get(Section, lesson.section_id)
         if section is None:
             continue
+        # Prefer the full sentence the term appears in (term bolded, no "..."
+        # truncation). Fall back to the FTS snippet only when no clean sentence
+        # could be extracted (e.g. the hit was inside a stripped code block).
+        sentence = first_sentence_with_term(step.content_text, term.name)
+        snippet = (
+            highlight_term_html(sentence, term.name)
+            if sentence
+            else snippet_map.get(step.id, "")
+        )
         occurrences.append(
             OccurrenceRead(
                 step_id=step.id,
@@ -147,7 +163,7 @@ def list_occurrences(
                 lesson_name=lesson.title,
                 section_id=section.id,
                 section_name=section.title,
-                snippet=snippet_map.get(step.id, ""),
+                snippet=snippet,
             )
         )
     return occurrences

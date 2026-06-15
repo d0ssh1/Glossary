@@ -55,6 +55,8 @@ export const listCourses = () => request<ApiCourse[]>('/courses/');
 export const getCourse = (id: number) => request<ApiCourseFull>(`/courses/${id}`);
 export const createCourse = (body: { title: string; url: string }) =>
   request<ApiCourse>('/courses/', { method: 'POST', body: JSON.stringify(body) });
+export const updateCourse = (id: number, body: Partial<{ title: string; url: string }>) =>
+  request<ApiCourse>(`/courses/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
 export const deleteCourse = (id: number) =>
   request<void>(`/courses/${id}`, { method: 'DELETE' });
 export type ImportBody =

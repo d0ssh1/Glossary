@@ -19,6 +19,7 @@ export type ModalType =
   | 'confirm-delete'
   | 'unsaved-changes'
   | 'occurrences'
+  | 'rename'
   | null;
 
 export interface Term {
