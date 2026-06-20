@@ -161,7 +161,10 @@ export default function VisGraph() {
         // Hovering or selecting a node lights up just its edges via the solid
         // hover/highlight colours below (vis-network handles the swap).
         const weight = l.weight || 1;
-        const baseAlpha = Math.min(0.4, 0.12 + weight * 0.04);
+        // Almost transparent at rest so even a dense graph stays calm; hovering
+        // or selecting a node brings the relevant edges to full amber (see the
+        // edges options + the light effect).
+        const baseAlpha = Math.min(0.18, 0.05 + weight * 0.016);
         const baseColor = hexToRgba(linkHex[l.type], baseAlpha);
 
         return {
@@ -182,7 +185,12 @@ export default function VisGraph() {
 
     const options = {
       nodes: { margin: { top: 8, bottom: 8, left: 12, right: 12 }, widthConstraint: { maximum: 180 } },
-      edges: { smooth: { enabled: false, type: 'continuous', roundness: 0, forceDirection: 'none' } },
+      edges: {
+        smooth: { enabled: false, type: 'continuous', roundness: 0, forceDirection: 'none' },
+        // Make hover/selection highlighting unmistakable against the faint base.
+        selectionWidth: 2.5,
+        hoverWidth: 1.5,
+      },
       physics: {
         enabled: true,
         solver: 'forceAtlas2Based',
