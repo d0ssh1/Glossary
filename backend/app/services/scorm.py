@@ -22,6 +22,7 @@ from xml.sax.saxutils import escape
 from sqlalchemy.orm import Session
 
 from app.models import Glossary
+from app.services.occurrences import collect_occurrences
 
 ScormVersion = Literal["1.2", "2004"]
 
@@ -74,7 +75,7 @@ def _course_payload(course) -> dict:
     }
 
 
-def _glossary_payload(glossary: Glossary) -> dict:
+def _glossary_payload(db: Session, glossary: Glossary) -> dict:
     return {
         "id": glossary.id,
         "course_id": glossary.course_id,
@@ -96,16 +97,19 @@ def _glossary_payload(glossary: Glossary) -> dict:
                     }
                     for b in t.bindings
                 ],
+                # Bake occurrences (contexts) into the export so the published,
+                # backend-less player can still show "Найдено в курсе".
+                "occurrences": collect_occurrences(db, t),
             }
             for t in glossary.terms
         ],
     }
 
 
-def _build_payload(glossary: Glossary) -> dict:
+def _build_payload(db: Session, glossary: Glossary) -> dict:
     return {
         "course": _course_payload(glossary.course),
-        "glossaries": [_glossary_payload(glossary)],
+        "glossaries": [_glossary_payload(db, glossary)],
         "activeGlossaryId": glossary.id,
     }
 
@@ -166,7 +170,7 @@ def _manifest_xml(course_title: str, scorm_id: str, version: ScormVersion, files
         if version == "1.2"
         else "<schema>ADL SCORM</schema><schemaversion>2004 4th Edition</schemaversion>"
     )
-    title = escape(course_title or "Глоссарий")
+    title = escape(course_title or "Интерактивный глоссарий")
     file_tags = "\n      ".join(f'<file href="{escape(f)}"/>' for f in files)
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <manifest identifier="{escape(scorm_id)}" version="1.0"
@@ -209,7 +213,7 @@ def build_scorm_zip(
             "backend/app/scorm_player/."
         )
 
-    payload = _build_payload(glossary)
+    payload = _build_payload(db, glossary)
     data_js = (
         "window.__LW_SCORM__ = true;\n"
         "window.__LW_GLOSSARY__ = "

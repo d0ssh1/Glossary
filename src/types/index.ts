@@ -41,6 +41,8 @@ export interface Occurrence {
   lessonId: string;
   stepId: string;
   stepName: string;
+  /** Direct link to the source step (Stepik/CoreApp). Drives "Перейти к шагу". */
+  stepUrl?: string;
 }
 
 export interface Connection {
@@ -52,6 +54,9 @@ export interface Connection {
   stepId: string;
   stepName: string;
   type: 'editor' | 'system';
+  /** Direct link to the source step — lets connections in the context panel
+   *  navigate to where the term appears (used in the SCORM player too). */
+  stepUrl?: string;
 }
 
 export interface Glossary {
@@ -103,6 +108,8 @@ export interface Step {
   moduleId: string;
   content: string;
   ftsIndexed: boolean;
+  /** Direct link to the source step on the origin platform. */
+  url?: string;
 }
 
 export interface GraphNode {

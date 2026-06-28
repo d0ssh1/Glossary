@@ -3,6 +3,7 @@
 // ============================================================
 import { Plus, Upload, FileText, ChevronRight, Trash2, Pencil } from 'lucide-react';
 import { useApp } from '@/store/AppContext';
+import { formatImportDate } from '@/lib/formatDate';
 import type { Glossary } from '@/types';
 
 export default function Dashboard() {
@@ -40,8 +41,8 @@ export default function Dashboard() {
     dispatch({ type: 'OPEN_MODAL', modal: 'confirm-delete', data: { courseId, courseName } });
   };
 
-  const handleRenameCourse = (courseId: string, currentName: string) => {
-    dispatch({ type: 'OPEN_MODAL', modal: 'rename', data: { kind: 'course', id: courseId, currentName } });
+  const handleRenameCourse = (courseId: string, currentName: string, currentUrl: string) => {
+    dispatch({ type: 'OPEN_MODAL', modal: 'rename', data: { kind: 'course', id: courseId, currentName, currentUrl } });
   };
 
   const handleRenameGlossary = (glossaryId: string, currentName: string) => {
@@ -121,9 +122,25 @@ export default function Dashboard() {
                   </h3>
                   <p className="mt-0.5 text-xs" style={{ color: 'var(--lw-text-muted)' }}>
                     {course.lastImportDate
-                      ? `Последний импорт: ${course.lastImportDate}`
+                      ? `Последний импорт: ${formatImportDate(course.lastImportDate)}`
                       : 'Ещё не импортирован'}
                   </p>
+                  {course.url ? (
+                    <a
+                      href={course.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-0.5 block max-w-md truncate text-xs underline-offset-2 hover:underline"
+                      style={{ color: 'var(--lw-accent-amber)' }}
+                      title={course.url}
+                    >
+                      {course.url}
+                    </a>
+                  ) : (
+                    <p className="mt-0.5 text-xs italic" style={{ color: 'var(--lw-text-muted)' }}>
+                      Ссылка не указана — нажмите карандаш, чтобы добавить
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <button
@@ -137,11 +154,11 @@ export default function Dashboard() {
                     Импорт курса
                   </button>
                   <button
-                    onClick={() => handleRenameCourse(course.id, course.name)}
+                    onClick={() => handleRenameCourse(course.id, course.name, course.url)}
                     className="flex items-center justify-center rounded border p-1.5 transition-all duration-200"
                     style={{ borderColor: 'var(--lw-border-primary)', color: 'var(--lw-text-muted)' }}
-                    title="Изменить название курса"
-                    aria-label="Изменить название курса"
+                    title="Изменить название и ссылку курса"
+                    aria-label="Изменить название и ссылку курса"
                     onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--lw-bg-hover)'; e.currentTarget.style.color = 'var(--lw-accent-amber)'; }}
                     onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--lw-text-muted)'; }}
                   >

@@ -32,6 +32,17 @@ export const PANEL_WIDTH = {
   right: 380,
 } as const;
 
+/** Drag-resize bounds for the editor side panels (desktop). */
+export const PANEL_MIN = {
+  left: 240,
+  right: 280,
+} as const;
+
+export const PANEL_MAX = {
+  left: 560,
+  right: 640,
+} as const;
+
 /** Breakpoint below which the editor switches to mobile (drawer) layout. */
 export const MOBILE_BREAKPOINT = 900;
 

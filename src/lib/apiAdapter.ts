@@ -33,7 +33,7 @@ export function mapTerm(
   api: ApiTerm,
   moduleId: string,
   lessonId: string,
-  stepLocations: Map<number, StepLocation & { stepName: string; moduleName: string; lessonName: string }> = new Map(),
+  stepLocations: Map<number, StepLocationFull> = new Map(),
 ): Term {
   // Materialise backend bindings into the frontend Connection[] shape so the
   // LinkEditor knows which step IDs are currently bound and can compute a
@@ -49,6 +49,7 @@ export function mapTerm(
       stepId: numericToId('st', b.step_id),
       stepName: loc?.stepName ?? '',
       type: b.is_created_by_user ? 'editor' : 'system',
+      stepUrl: loc?.stepUrl,
     };
   });
   return {
@@ -58,7 +59,9 @@ export function mapTerm(
     status: deriveStatus(api),
     moduleId,
     lessonId,
-    occurrences: [],
+    // Occurrences are normally lazy-loaded, but the SCORM export bakes them
+    // into the term payload so the published player can show contexts offline.
+    occurrences: api.occurrences ? mapOccurrences(api.occurrences) : [],
     connections,
   };
 }
@@ -72,6 +75,7 @@ export function mapOccurrences(arr: ApiOccurrence[]): Occurrence[] {
     lessonId: numericToId('l', o.lesson_id),
     stepId: numericToId('st', o.step_id),
     stepName: o.step_name,
+    stepUrl: o.step_url,
   }));
 }
 
@@ -81,6 +85,7 @@ interface StepLocationFull extends StepLocation {
   moduleName: string;
   lessonName: string;
   stepName: string;
+  stepUrl: string;
 }
 
 function indexSteps(course: ApiCourseFull): Map<number, StepLocationFull> {
@@ -95,6 +100,7 @@ function indexSteps(course: ApiCourseFull): Map<number, StepLocationFull> {
           moduleName: section.title,
           lessonName: lesson.title,
           stepName: step.name,
+          stepUrl: step.step_url,
         });
       }
     }
@@ -116,6 +122,7 @@ export function mapCourseFull(api: ApiCourseFull, glossaries: ApiGlossaryFull[])
         moduleId,
         content: '',
         ftsIndexed: lesson.is_indexed,
+        url: step.step_url,
       }));
       return { id: lessonId, name: lesson.title, moduleId, steps, isIndexed: lesson.is_indexed };
     });

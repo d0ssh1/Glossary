@@ -54,6 +54,9 @@ export interface ApiTerm {
   name: string;
   definition: string;
   bindings: ApiBinding[];
+  /** Only present in the SCORM export payload, which bakes occurrences in so
+   *  the offline player can show contexts without a backend round-trip. */
+  occurrences?: ApiOccurrence[];
 }
 
 export interface ApiGlossary {

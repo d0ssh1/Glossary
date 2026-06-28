@@ -13,6 +13,7 @@ from app import database as _db_module
 from app.database import get_db
 from app.models import Course, Lesson, Section
 from app.schemas import (
+    CoreappParsingRequest,
     CourseCreate,
     CourseFullRead,
     CourseRead,
@@ -185,6 +186,22 @@ def _bg_import_dump(course_id: int, file_path: Path) -> None:
         db.close()
 
 
+def _bg_import_coreapp(course_id: int, url: str, login: str, password: str) -> None:
+    _set_status(course_id, "running")
+    db = _db_module.SessionLocal()
+    try:
+        # Deferred import keeps Playwright off the hot path for non-CoreApp imports.
+        from app.services.coreapp import import_course_from_coreapp  # noqa: PLC0415
+
+        request = CoreappParsingRequest(url=url, login=login, password=password)
+        import_course_from_coreapp(db, course_id, request)
+        _set_status(course_id, "done")
+    except Exception as exc:  # noqa: BLE001
+        _set_status(course_id, "error", str(exc))
+    finally:
+        db.close()
+
+
 @router.post(
     "/{course_id}/import",
     response_model=ImportAccepted,
@@ -231,6 +248,33 @@ def import_course(
         )
         return ImportAccepted(
             course_id=course_id, status="running", message="Stepik import scheduled"
+        )
+
+    if payload.source == "coreapp":
+        if not (payload.coreapp_login and payload.coreapp_password):
+            raise HTTPException(
+                status_code=422,
+                detail="coreapp_login и coreapp_password обязательны для source='coreapp'",
+            )
+        if not (course.url or "").strip():
+            raise HTTPException(
+                status_code=422,
+                detail="У курса не указан URL — добавьте ссылку на курс CoreApp перед импортом.",
+            )
+        course.import_status = "running"
+        course.import_error = None
+        course.import_steps_total = 0
+        course.import_steps_done = 0
+        db.commit()
+        background_tasks.add_task(
+            _bg_import_coreapp,
+            course_id,
+            course.url,
+            payload.coreapp_login,
+            payload.coreapp_password,
+        )
+        return ImportAccepted(
+            course_id=course_id, status="running", message="CoreApp import scheduled"
         )
 
     filename = payload.filename or "sample_course.json"

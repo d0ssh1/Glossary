@@ -6,4 +6,7 @@ pydantic-settings>=2.6
 httpx>=0.27
 beautifulsoup4>=4.12
 python-multipart>=0.0.12
+# CoreApp import drives a headless browser to log in (no public API).
+# After installing, run once: `playwright install chromium`.
+playwright>=1.40
 pytest>=8.3

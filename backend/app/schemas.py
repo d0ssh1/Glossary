@@ -167,7 +167,7 @@ class OccurrenceRead(BaseModel):
 # Import / SCORM
 # --------------------------------------------------------------------------- #
 class ImportRequest(BaseModel):
-    source: Literal["mock", "json", "stepik"] = "mock"
+    source: Literal["mock", "json", "stepik", "coreapp"] = "mock"
     # For "mock"/"json": path inside `mock_data_dir`. For "stepik": ignored.
     filename: Optional[str] = None
     # For "stepik": ID of the course on stepik.org.
@@ -178,6 +178,28 @@ class ImportRequest(BaseModel):
     # are used. Both fields are stripped before reaching logs.
     client_id: Optional[str] = None
     client_secret: Optional[str] = None
+    # For "coreapp": the platform login/password. CoreApp has no public API, so
+    # the parser logs in with a headless browser (see services/coreapp.py). The
+    # course URL is taken from the Course row. Password is never logged.
+    coreapp_login: Optional[str] = None
+    coreapp_password: Optional[str] = None
+
+
+# --------------------------------------------------------------------------- #
+# CoreApp parsing
+# --------------------------------------------------------------------------- #
+class CoreappParsingRequest(BaseModel):
+    """Inputs for a CoreApp (coreapp.ai) course parse.
+
+    The frontend supplies the course ``url`` plus the user's ``login`` (email)
+    and ``password``; the parser authenticates on the platform under the hood
+    and walks the course structure. Mirrors the per-request credential model
+    used by the Stepik importer.
+    """
+
+    url: str = Field(..., description="Full URL of the CoreApp course to parse.")
+    login: str = Field(..., description="CoreApp account email.")
+    password: str = Field(..., description="CoreApp account password (never logged).")
 
 
 class ImportReport(BaseModel):

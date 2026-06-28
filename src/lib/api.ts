@@ -62,7 +62,8 @@ export const deleteCourse = (id: number) =>
 export type ImportBody =
   | { source: 'mock'; filename?: string }
   | { source: 'json'; filename: string }
-  | { source: 'stepik'; stepik_course_id: number; client_id?: string; client_secret?: string };
+  | { source: 'stepik'; stepik_course_id: number; client_id?: string; client_secret?: string }
+  | { source: 'coreapp'; coreapp_login: string; coreapp_password: string };
 export const importCourse = (id: number, body: ImportBody) =>
   request<{ course_id: number; status: string; message: string }>(
     `/courses/${id}/import`,

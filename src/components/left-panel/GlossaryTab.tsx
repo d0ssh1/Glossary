@@ -101,11 +101,27 @@ export default function GlossaryTab() {
         </div>
       )}
 
-      {/* Total count */}
-      <div className="px-4 pt-3 pb-2">
+      {/* Total count + a select-all toggle. The toggle is always available
+          (including the read-only SCORM player, where selecting terms is how
+          the viewer highlights their connections on the graph). */}
+      <div className="flex items-center justify-between px-4 pt-3 pb-2">
         <p className="text-xs font-medium" style={{ color: 'var(--lw-text-secondary)' }}>
           Всего терминов: {terms.length}
         </p>
+        {allFilteredIds.length > 0 && (
+          <button
+            onClick={() => {
+              if (isAllSelected) dispatch({ type: 'DESELECT_ALL_TERMS' });
+              else dispatch({ type: 'SELECT_ALL_TERMS', termIds: allFilteredIds });
+            }}
+            className="rounded border px-2 py-0.5 text-[11px] font-medium transition-colors duration-200"
+            style={{ borderColor: 'var(--lw-border-primary)', color: 'var(--lw-text-secondary)' }}
+            onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--lw-bg-hover)'; }}
+            onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+          >
+            {isAllSelected ? 'Снять выделение' : 'Выделить все'}
+          </button>
+        )}
       </div>
 
       {/* Search */}

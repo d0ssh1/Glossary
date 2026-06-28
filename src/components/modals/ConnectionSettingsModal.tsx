@@ -58,10 +58,19 @@ export default function ConnectionSettingsModal() {
   const initialCreds = loadCreds();
   const [clientId, setClientId] = useState(initialCreds.clientId);
   const [clientSecret, setClientSecret] = useState(initialCreds.clientSecret);
+  // CoreApp uses email/password instead of OAuth keys. We remember the email
+  // (handy across imports) but never persist the password.
+  const COREAPP_LOGIN_LS = 'lw.coreapp.login';
+  const [coreappLogin, setCoreappLogin] = useState(() => {
+    try { return localStorage.getItem(COREAPP_LOGIN_LS) || ''; } catch { return ''; }
+  });
+  const [coreappPassword, setCoreappPassword] = useState('');
 
   const course = state.courses.find(c => c.id === state.activeCourseId);
   const stepikId = course ? parseStepikCourseId(course.url) : null;
+  const isCoreapp = /coreapp\.ai/i.test(course?.url || '');
   const live = apiEnabled() && !!state.activeCourseId;
+  const coreappReady = coreappLogin.trim() !== '' && coreappPassword !== '';
 
   const runLiveImport = async (body: Parameters<typeof apiImportCourse>[1]) => {
     if (!state.activeCourseId) return;
@@ -76,7 +85,7 @@ export default function ConnectionSettingsModal() {
     // real `steps_total`, the per-step counter takes over.
     const startedAt = Date.now();
     const phaseLabel = (sec: number) => {
-      if (sec < 3) return 'Подключаемся к Stepik...';
+      if (sec < 3) return 'Подключаемся к платформе...';
       if (sec < 8) return 'Получаем структуру курса...';
       if (sec < 16) return 'Загружаем шаги (этап подготовки)...';
       return 'Парсим контент шагов...';
@@ -159,6 +168,20 @@ export default function ConnectionSettingsModal() {
     );
   };
 
+  const startCoreappImport = () => {
+    if (!live) return;
+    if (!coreappReady) {
+      setError('Введите email и пароль CoreApp');
+      return;
+    }
+    try { localStorage.setItem(COREAPP_LOGIN_LS, coreappLogin.trim()); } catch { /* ignore */ }
+    void runLiveImport({
+      source: 'coreapp',
+      coreapp_login: coreappLogin.trim(),
+      coreapp_password: coreappPassword,
+    });
+  };
+
   const startJsonSync = () => {
     if (live) {
       void runLiveImport({ source: 'mock' });
@@ -180,39 +203,73 @@ export default function ConnectionSettingsModal() {
       <h3 className="mb-5 text-lg font-semibold" style={{ color: 'var(--lw-text-primary)' }}>Настройка подключения</h3>
       <div className="space-y-4">
         {live ? (
-          <>
-            <div className="rounded border p-3 text-xs leading-relaxed"
-              style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)', color: 'var(--lw-text-secondary)' }}>
-              {stepikId
-                ? <p>Будет импортирован курс Stepik <strong>#{stepikId}</strong>. Если ключи ниже пусты, используются значения из <code>backend/.env</code>.</p>
-                : <p style={{ color: 'var(--lw-warning)' }}>В URL курса нет Stepik ID — доступен только JSON-импорт.</p>}
-            </div>
+          isCoreapp ? (
+            <>
+              <div className="rounded border p-3 text-xs leading-relaxed"
+                style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)', color: 'var(--lw-text-secondary)' }}>
+                <p>Курс <strong>CoreApp</strong> по ссылке. Вход выполняется под вашим аккаунтом в headless-браузере; пароль используется только для импорта и не сохраняется.</p>
+              </div>
 
-            <div className="space-y-2">
-              <label className="block">
-                <span className="block text-xs font-medium" style={{ color: 'var(--lw-text-secondary)' }}>Client ID</span>
-                <input
-                  type="text"
-                  value={clientId}
-                  onChange={e => setClientId(e.target.value)}
-                  placeholder="напр. 51a37dfc8d2c4ed4..."
-                  className="mt-1 w-full rounded border px-2.5 py-1.5 text-xs outline-none"
-                  style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)', color: 'var(--lw-text-primary)' }}
-                />
-              </label>
-              <label className="block">
-                <span className="block text-xs font-medium" style={{ color: 'var(--lw-text-secondary)' }}>Client Secret</span>
-                <input
-                  type="password"
-                  value={clientSecret}
-                  onChange={e => setClientSecret(e.target.value)}
-                  placeholder="••••••••"
-                  className="mt-1 w-full rounded border px-2.5 py-1.5 text-xs outline-none"
-                  style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)', color: 'var(--lw-text-primary)' }}
-                />
-              </label>
-            </div>
-          </>
+              <div className="space-y-2">
+                <label className="block">
+                  <span className="block text-xs font-medium" style={{ color: 'var(--lw-text-secondary)' }}>Email CoreApp</span>
+                  <input
+                    type="email"
+                    value={coreappLogin}
+                    onChange={e => setCoreappLogin(e.target.value)}
+                    placeholder="you@example.com"
+                    className="mt-1 w-full rounded border px-2.5 py-1.5 text-xs outline-none"
+                    style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)', color: 'var(--lw-text-primary)' }}
+                  />
+                </label>
+                <label className="block">
+                  <span className="block text-xs font-medium" style={{ color: 'var(--lw-text-secondary)' }}>Пароль CoreApp</span>
+                  <input
+                    type="password"
+                    value={coreappPassword}
+                    onChange={e => setCoreappPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="mt-1 w-full rounded border px-2.5 py-1.5 text-xs outline-none"
+                    style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)', color: 'var(--lw-text-primary)' }}
+                  />
+                </label>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="rounded border p-3 text-xs leading-relaxed"
+                style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)', color: 'var(--lw-text-secondary)' }}>
+                {stepikId
+                  ? <p>Будет импортирован курс Stepik <strong>#{stepikId}</strong>. Если ключи ниже пусты, используются значения из <code>backend/.env</code>.</p>
+                  : <p style={{ color: 'var(--lw-warning)' }}>В URL курса нет Stepik ID — доступен только JSON-импорт.</p>}
+              </div>
+
+              <div className="space-y-2">
+                <label className="block">
+                  <span className="block text-xs font-medium" style={{ color: 'var(--lw-text-secondary)' }}>Client ID</span>
+                  <input
+                    type="text"
+                    value={clientId}
+                    onChange={e => setClientId(e.target.value)}
+                    placeholder="напр. 51a37dfc8d2c4ed4..."
+                    className="mt-1 w-full rounded border px-2.5 py-1.5 text-xs outline-none"
+                    style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)', color: 'var(--lw-text-primary)' }}
+                  />
+                </label>
+                <label className="block">
+                  <span className="block text-xs font-medium" style={{ color: 'var(--lw-text-secondary)' }}>Client Secret</span>
+                  <input
+                    type="password"
+                    value={clientSecret}
+                    onChange={e => setClientSecret(e.target.value)}
+                    placeholder="••••••••"
+                    className="mt-1 w-full rounded border px-2.5 py-1.5 text-xs outline-none"
+                    style={{ borderColor: 'var(--lw-border-primary)', backgroundColor: 'var(--lw-bg-primary)', color: 'var(--lw-text-primary)' }}
+                  />
+                </label>
+              </div>
+            </>
+          )
         ) : (
           <p className="text-xs italic" style={{ color: 'var(--lw-text-muted)' }}>
             Демо-режим: используются моковые данные. Чтобы импортировать реальный курс, поднимите бэкенд
@@ -223,12 +280,16 @@ export default function ConnectionSettingsModal() {
         {error && <p className="text-xs" style={{ color: 'var(--lw-error)' }}>{error}</p>}
 
         <button
-          onClick={startApiSync}
-          disabled={busy || (live && !stepikId)}
+          onClick={live && isCoreapp ? startCoreappImport : startApiSync}
+          disabled={
+            busy ||
+            (live && isCoreapp && !coreappReady) ||
+            (live && !isCoreapp && !stepikId)
+          }
           className="mt-2 w-full rounded py-2 text-sm font-medium transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40"
           style={{ backgroundColor: 'var(--lw-accent-graphite)', color: 'var(--lw-bg-primary)' }}
         >
-          {live ? 'Импорт с Stepik' : 'Начать загрузку (демо)'}
+          {live ? (isCoreapp ? 'Импорт с CoreApp' : 'Импорт с Stepik') : 'Начать загрузку (демо)'}
         </button>
         {/* Local-JSON import is an untested dev pathway — only offered in the
             offline demo. With a live backend, Stepik import is the supported route. */}

@@ -157,7 +157,7 @@ type Action =
   | { type: 'SET_COURSES'; courses: Course[] }
   | { type: 'ADD_COURSE'; course: Course }
   | { type: 'REPLACE_COURSE'; course: Course }
-  | { type: 'RENAME_COURSE'; courseId: string; name: string }
+  | { type: 'RENAME_COURSE'; courseId: string; name: string; url?: string }
   | { type: 'DELETE_COURSE'; courseId: string }
   | { type: 'ADD_GLOSSARY'; courseId: string; glossary: Glossary }
   | { type: 'RENAME_GLOSSARY'; glossaryId: string; name: string }
@@ -308,7 +308,9 @@ export function appReducer(state: AppState, action: Action): AppState {
     }
     case 'RENAME_COURSE': {
       const courses = state.courses.map(c =>
-        c.id === action.courseId ? { ...c, name: action.name } : c,
+        c.id === action.courseId
+          ? { ...c, name: action.name, ...(action.url !== undefined ? { url: action.url } : {}) }
+          : c,
       );
       // Keep the breadcrumb root label in sync if this course is open.
       const breadcrumbs = state.breadcrumbs.map((b, i) =>
@@ -538,11 +540,13 @@ export function useApi() {
     }
   }, [dispatch, findGlossaryId]);
 
-  const apiRenameCourse = useCallback(async (courseId: string, name: string) => {
-    dispatch({ type: 'RENAME_COURSE', courseId, name });
+  const apiRenameCourse = useCallback(async (courseId: string, name: string, url?: string) => {
+    dispatch({ type: 'RENAME_COURSE', courseId, name, url });
     if (apiEnabled()) {
       try {
-        await apiUpdateCourseRaw(stringIdToNumeric(courseId), { title: name });
+        const body: { title: string; url?: string } = { title: name };
+        if (url !== undefined) body.url = url;
+        await apiUpdateCourseRaw(stringIdToNumeric(courseId), body);
       } catch (err) {
         console.error('[useApi] renameCourse failed', err);
       }

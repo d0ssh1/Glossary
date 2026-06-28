@@ -70,14 +70,19 @@ export default function OccurrencesModal() {
               style={{ color: 'var(--lw-text-primary)' }}
               dangerouslySetInnerHTML={{ __html: occ.snippet }}
             />
-            <button
-              className="flex items-center gap-1 text-xs font-medium transition-opacity duration-200"
-              style={{ color: 'var(--lw-accent-amber)' }}
-              onMouseEnter={e => { e.currentTarget.style.opacity = '0.8'; }}
-              onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
-            >
-              Перейти к шагу <ExternalLink size={10} />
-            </button>
+            {occ.stepUrl && (
+              <a
+                href={occ.stepUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1 text-xs font-medium transition-opacity duration-200"
+                style={{ color: 'var(--lw-accent-amber)' }}
+                onMouseEnter={e => { e.currentTarget.style.opacity = '0.8'; }}
+                onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
+              >
+                Перейти к шагу <ExternalLink size={10} />
+              </a>
+            )}
           </div>
         ))}
       </div>

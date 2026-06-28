@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Glossary, Lesson, Section, Step, Term
+from app.models import Glossary, Term
 from app.schemas import (
     OccurrenceRead,
     TermBulkCreate,
@@ -14,8 +14,7 @@ from app.schemas import (
     TermRead,
     TermUpdate,
 )
-from app.services.fts import search_steps_for_term
-from app.services.parser import first_sentence_with_term, highlight_term_html
+from app.services.occurrences import collect_occurrences
 
 router = APIRouter(prefix="/glossaries/{glossary_id}/terms", tags=["terms"])
 
@@ -128,42 +127,4 @@ def list_occurrences(
     if term is None or term.glossary_id != glossary_id:
         raise HTTPException(status_code=404, detail="Term not found")
 
-    # Build a snippet map from FTS for this term name in the glossary's course.
-    course_id = term.glossary.course_id
-    snippet_map: dict[int, str] = {}
-    for step_id, snip in search_steps_for_term(db, course_id, term.name):
-        snippet_map[step_id] = snip
-
-    occurrences: list[OccurrenceRead] = []
-    for binding in term.bindings:
-        step = db.get(Step, binding.step_id)
-        if step is None:
-            continue
-        lesson = db.get(Lesson, step.lesson_id)
-        if lesson is None:
-            continue
-        section = db.get(Section, lesson.section_id)
-        if section is None:
-            continue
-        # Prefer the full sentence the term appears in (term bolded, no "..."
-        # truncation). Fall back to the FTS snippet only when no clean sentence
-        # could be extracted (e.g. the hit was inside a stripped code block).
-        sentence = first_sentence_with_term(step.content_text, term.name)
-        snippet = (
-            highlight_term_html(sentence, term.name)
-            if sentence
-            else snippet_map.get(step.id, "")
-        )
-        occurrences.append(
-            OccurrenceRead(
-                step_id=step.id,
-                step_name=f"Шаг {step.position}",
-                step_url=step.step_url,
-                lesson_id=lesson.id,
-                lesson_name=lesson.title,
-                section_id=section.id,
-                section_name=section.title,
-                snippet=snippet,
-            )
-        )
-    return occurrences
+    return [OccurrenceRead(**occ) for occ in collect_occurrences(db, term)]

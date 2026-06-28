@@ -179,9 +179,11 @@ def test_scorm_zip(client: TestClient) -> None:
     course_id = _make_course_with_import(client)
     r = client.post(f"/glossaries/?course_id={course_id}", json={"title": "G"})
     glossary_id = r.json()["id"]
-    client.post(
+    term_id = client.post(
         f"/glossaries/{glossary_id}/terms/bulk", json={"names": ["SELECT"]}
-    )
+    ).json()[0]["id"]
+    # Collect bindings so the term has occurrences to bake into the export.
+    client.post(f"/glossaries/{glossary_id}/collect", json={"term_ids": [term_id]})
 
     r = client.post(
         f"/glossaries/{glossary_id}/scorm",
@@ -207,6 +209,12 @@ def test_scorm_zip(client: TestClient) -> None:
         assert "__LW_GLOSSARY__" in data_js
         payload = json.loads(data_js.split("window.__LW_GLOSSARY__ =", 1)[1].rsplit(";", 1)[0].strip())
         assert payload["glossaries"][0]["title"] == "G"
+        # Occurrences (contexts) are baked in so the offline player can show them.
+        term = payload["glossaries"][0]["terms"][0]
+        assert "occurrences" in term
+        assert len(term["occurrences"]) > 0
+        assert any("<b>SELECT</b>" in o["snippet"] for o in term["occurrences"])
+        assert term["occurrences"][0]["step_url"]  # link to navigate to the step
 
 
 def test_binding_duplicate_409(client: TestClient) -> None:

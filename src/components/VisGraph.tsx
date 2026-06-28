@@ -127,7 +127,13 @@ export default function VisGraph() {
           title: n.name,
           x: saved?.x,
           y: saved?.y,
-          fixed: saved ? { x: true, y: true } : false,
+          // Don't *fix* a node just because it has a saved position — `fixed`
+          // silently kills dragging, which is why moving nodes "disappeared"
+          // after the first layout. Instead exclude saved nodes from physics so
+          // forceAtlas leaves them at their spot, while the user can still grab
+          // and drag them (works the same in the read-only SCORM view).
+          fixed: false,
+          physics: !saved,
           shape: isTerm ? 'dot' : 'box',
           size: isTerm ? 18 : undefined,
           font: {
@@ -212,6 +218,8 @@ export default function VisGraph() {
         tooltipDelay: 200,
         zoomView: true,
         dragView: true,
+        // Nodes must stay draggable in every mode, including the SCORM player.
+        dragNodes: true,
         multiselect: false,
       },
       layout: { randomSeed: 42 },

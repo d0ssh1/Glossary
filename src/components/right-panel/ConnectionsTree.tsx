@@ -9,7 +9,7 @@ import type { Connection } from '@/types';
  * module/lesson groups its children and shows a count; steps are the leaves,
  * tagged with who created the binding (editor vs system).
  */
-interface StepLeaf { id: string; stepName: string; type: 'editor' | 'system' }
+interface StepLeaf { id: string; stepName: string; type: 'editor' | 'system'; stepUrl?: string }
 interface LessonGroup { key: string; lessonName: string; steps: StepLeaf[] }
 interface ModuleGroup { key: string; moduleName: string; lessons: LessonGroup[]; count: number }
 
@@ -30,7 +30,7 @@ function buildTree(connections: Connection[]): ModuleGroup[] {
       lesson = { key: lKey, lessonName: c.lessonName || 'Без урока', steps: [] };
       mod.lessons.push(lesson);
     }
-    lesson.steps.push({ id: c.id, stepName: c.stepName || 'Шаг', type: c.type });
+    lesson.steps.push({ id: c.id, stepName: c.stepName || 'Шаг', type: c.type, stepUrl: c.stepUrl });
     mod.count += 1;
   }
   return modules;
@@ -80,15 +80,38 @@ export default function ConnectionsTree({ connections }: { connections: Connecti
                     <span className="ml-auto shrink-0 text-[10px]" style={{ color: 'var(--lw-text-muted)' }}>{lesson.steps.length}</span>
                   </button>
 
-                  {!lessonCollapsed && lesson.steps.map(step => (
-                    <div key={step.id} className="ml-5 flex items-center gap-1.5 px-1.5 py-0.5">
-                      {step.type === 'editor'
-                        ? <User size={9} style={{ color: 'var(--lw-accent-amber)' }} />
-                        : <Sparkles size={9} style={{ color: 'var(--lw-success)' }} />}
-                      <span className="truncate text-xs" style={{ color: 'var(--lw-text-primary)' }}>{step.stepName}</span>
-                      <ExternalLink size={9} className="shrink-0" style={{ color: 'var(--lw-accent-amber)' }} />
-                    </div>
-                  ))}
+                  {!lessonCollapsed && lesson.steps.map(step => {
+                    const leaf = (
+                      <>
+                        {step.type === 'editor'
+                          ? <User size={9} style={{ color: 'var(--lw-accent-amber)' }} />
+                          : <Sparkles size={9} style={{ color: 'var(--lw-success)' }} />}
+                        <span className="truncate text-xs" style={{ color: 'var(--lw-text-primary)' }}>{step.stepName}</span>
+                        <ExternalLink size={9} className="shrink-0" style={{ color: 'var(--lw-accent-amber)' }} />
+                      </>
+                    );
+                    // When the step has a source URL, the row becomes a link that
+                    // opens the original step in a new tab (works in the SCORM
+                    // player too). Otherwise it stays a plain, non-clickable row.
+                    return step.stepUrl ? (
+                      <a
+                        key={step.id}
+                        href={step.stepUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Открыть шаг в новой вкладке"
+                        className="ml-5 flex items-center gap-1.5 rounded px-1.5 py-0.5 transition-colors"
+                        onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--lw-bg-hover)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                      >
+                        {leaf}
+                      </a>
+                    ) : (
+                      <div key={step.id} className="ml-5 flex items-center gap-1.5 px-1.5 py-0.5">
+                        {leaf}
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}
