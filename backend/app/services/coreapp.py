@@ -308,10 +308,20 @@ class CoreappParser:
         page = self._page
         assert page is not None  # _init_browser ran
         email = page.locator(self.EMAIL_SELECTOR).first
+
+        # 1) Open the course page. Connectivity failures get their own message so
+        #    "site unreachable" isn't confused with "login form not found".
         try:
-            # The auth dialog is bound to course access, so open the course URL
-            # and let the "course-auth" modal appear.
             await page.goto(self.request.url, wait_until="domcontentloaded")
+        except Exception as exc:  # noqa: BLE001 - DNS/timeout/refused/etc.
+            raise CoreAppParsingError(
+                f"Не удалось открыть страницу курса CoreApp ({self.request.url}). "
+                f"Проверьте URL и доступность сайта. Детали: {str(exc)[:140]}"
+            ) from exc
+
+        # 2) Reveal + fill the login dialog. On failure we dump exactly what the
+        #    parser sees so the real selectors/trigger can be pinned down.
+        try:
             if not await email.is_visible():
                 # Not auto-shown — try a "Войти" trigger to open the dialog.
                 try:
@@ -326,16 +336,18 @@ class CoreappParser:
             await email.fill(self.request.login)
             await page.locator(self.PASSWORD_SELECTOR).first.fill(self.request.password)
             await page.locator(self.SUBMIT_SELECTOR).first.click()
-            # The auth round-trip sets the token/is_logged_in cookies.
-            await page.wait_for_load_state("networkidle")
         except PWTimeoutError as exc:
-            raise CoreAppAuthError(
-                "Не удалось открыть/заполнить форму входа CoreApp. Если диалог "
-                "входа открывается иначе — уточните способ (кнопка или URL)."
-            ) from exc
+            raise CoreAppAuthError(await self._login_failure_message(page)) from exc
 
-        self.cookies = await self._context.cookies()
-        token = next((c["value"] for c in self.cookies if c["name"] == "token"), None)
+        # 3) Wait for the auth cookie. The SPA never reaches networkidle, so poll
+        #    for the `token` cookie instead of waiting on a load state.
+        token = None
+        for _ in range(20):
+            self.cookies = await self._context.cookies()
+            token = next((c["value"] for c in self.cookies if c["name"] == "token"), None)
+            if token:
+                break
+            await page.wait_for_timeout(500)
         logged_in = any(
             c["name"] == "is_logged_in" and str(c["value"]) == "1" for c in self.cookies
         )
@@ -345,6 +357,50 @@ class CoreappParser:
             )
         self.token = token
         return token
+
+    async def _login_failure_message(self, page) -> str:
+        """Diagnostic message when the login form can't be found/filled.
+
+        Dumps what the parser actually sees (inputs/buttons/dialogs/bp5 tab ids)
+        into the error, and saves a screenshot + HTML next to the backend so the
+        real selectors/trigger can be pinned down. The page is the logged-OUT
+        state, so it carries no credentials.
+        """
+        diag = "(диагностика недоступна)"
+        try:
+            data = await page.evaluate(
+                """() => {
+                  const inputs = [...document.querySelectorAll('input')].map(i => ({
+                    type: i.type || '', name: i.name || '', ph: i.placeholder || '',
+                    id: i.id || '', disabled: i.disabled,
+                  }));
+                  const btns = [...document.querySelectorAll('button, [role=button], .Button')]
+                    .map(b => (b.innerText || '').trim().slice(0, 30)).filter(Boolean);
+                  return {
+                    url: location.href,
+                    dialogs: document.querySelectorAll('[class*=dialog], [class*=Dialog], [role=dialog]').length,
+                    tabIds: [...document.querySelectorAll('[id^=bp5-tab]')].map(e => e.id).slice(0, 12),
+                    inputs: inputs.slice(0, 15),
+                    buttons: [...new Set(btns)].slice(0, 20),
+                  };
+                }"""
+            )
+            diag = json.dumps(data, ensure_ascii=False)
+        except Exception:  # noqa: BLE001
+            pass
+        saved = ""
+        try:
+            png = settings.project_root / "coreapp_login_debug.png"
+            html = settings.project_root / "coreapp_login_debug.html"
+            await page.screenshot(path=str(png))
+            html.write_text(await page.content(), encoding="utf-8")
+            saved = f" Скриншот и HTML сохранены в backend/: {png.name}, {html.name}."
+        except Exception:  # noqa: BLE001
+            pass
+        return (
+            "Не удалось открыть/заполнить форму входа CoreApp. Что парсер видит на "
+            f"странице: {diag}.{saved}"
+        )
 
     async def fetch_course_data(self) -> dict:
         """Sniff the (authenticated) course's own JSON API and build the tree.

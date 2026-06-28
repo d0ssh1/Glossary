@@ -67,3 +67,7 @@ CLAUDE.md
 .github/copilot-instructions.md
 .windsurf/
 .cody/
+
+# CoreApp parser debug artifacts (logged-out page dumps, never commit)
+coreapp_login_debug.*
+backend/coreapp_login_debug.*
